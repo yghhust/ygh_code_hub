@@ -1,1 +1,2 @@
-# ygh_code_hub
+--01_Makefile
+Generic Makefile for C/C++ Program
