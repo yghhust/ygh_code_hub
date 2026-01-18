@@ -1,4 +1,4 @@
-# ====================================================================
+# ================================================================================================
 # Generic CMakeLists.txt for C/C++ Program  
 #  
 # License: GPL (General Public License)  
@@ -23,11 +23,11 @@
 # 4) 编译链接选项设定
 #    CPPFLAGS/CFLAGS：编译选项（暂未实现）
 #    LDFLAGS：
-# ====================================================================
+# ================================================================================================
 
 #
 # 项目定制区：基于项目实际情况按需设置
-# --------------------------------------------------------------------
+# ================================================================================================
 # 1.定义项目名称
 set(MY_PROJECT "Demo")
 set(MY_PROJECT_DESCRIPTION "CMake for Demo")
@@ -70,7 +70,7 @@ set(COMMON_WARNINGS
 
 #
 # 主体功能实现区(谨慎修改或不要修改！)
-# --------------------------------------------------------------------
+# ================================================================================================
 # 1. cmake通用库
 include (CMakeParseArguments)
 #include(CMakeLists.template.txt)
@@ -247,8 +247,8 @@ endif()
 
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LDFLAGS}")
 
-# 3. 创建可执行文件
-# 可执行文件
+# 3. 编译文件搜索
+# 源文件搜索
 get_files_recurse(sources "${CMAKE_CURRENT_SOURCE_DIR}/${SRC_ROOT}" "${SRCEXTS}")
 #message(STATUS "sources: ${sources}")
 # 排除不需要的文件
@@ -259,14 +259,14 @@ files_exclusion(sources_excl2 "${sources_excl}" "${EXC_FILES}")
 add_executable(${PROJECT_NAME} ${sources_excl2})
 
 
-# 头文件搜索目录
+# 4. 头文件包含目录
 get_dirs_recurse(header_dirs "${CMAKE_CURRENT_SOURCE_DIR}/${SRC_ROOT}" "${HDREXTS}")
 # 排除不需要的目录
 dirs_exclusion(header_dirs_excl "${header_dirs}" "${EXC_DIRS}")
 #message(STATUS "header_dirs_excl: ${header_dirs_excl}")
 target_include_directories(${PROJECT_NAME} PRIVATE ${header_dirs_excl})
 
-# 链接库
+# 5. 链接库设定
 find_package(Threads REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads)
 #target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -276,7 +276,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads)
 #    json_lib
 #)
 
-# 8.设置目标属性
+# 6.设置目标属性
 set_target_properties(${PROJECT_NAME} PROPERTIES
     VERSION ${PROJECT_VERSION}
     OUTPUT_NAME ${MY_BIN}
