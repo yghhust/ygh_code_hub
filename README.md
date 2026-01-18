@@ -24,8 +24,8 @@ Generic Makefile for C/C++ Program
 - MY_BIN：目标文件名称
 - SRC_ROOT：源文件根目录
 - SRCEXTS/HDREXTS：源码类型
-- EXT_FILS：设置需要正则表达
-- EXT_DIRS：必要时，还可以设置 EXT_DIR 制定外部头文件搜索路径
+- EXC_FILES：需要排除不参与编译的源文件列表
+- EXC_DIRS：需要排除的源文件目录（做SRC_ROOT之下的子目录）
 - EXT_LIBS（暂未实现）
 - CPPFLAGS/CFLAGS：编译选项
 - LDFLAGS：链接选项
