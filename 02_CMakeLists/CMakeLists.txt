@@ -3,8 +3,9 @@
 #  
 # License: GPL (General Public License)  
 # Author:  yuguohua <ghy_hust@qq.com>  
-# Date:    2026/01/19 (version 0.1)  initial
-#
+# Date:    2026/01/18    version 0.1  initial
+#          2026/01/19    version 0.2  新增目录排除、文件排除功能
+
 # Description:  
 # ------------ 
 # 通用CMakeLists.txt, 按需定制如下配置即可开展cmake构建：
@@ -28,42 +29,34 @@
 set(MY_PROJECT "Demo")
 set(MY_PROJECT_DESCRIPTION "CMake for Demo")
 set(MY_BIN "my_app")
-# 0.1.设置源码
+
+# 0.2.设置源码
 # 源码路径（相对CMakeLists路径）
 set(SRC_ROOT "src") 
-# set(INSTALL_DIR "bin")
 # 源码类型
 set(SRCEXTS "*.c;*.cc;*.cpp")
 set(HDREXTS "*.h;*.hh;*.hpp")
+# 排除的文件和目录
+#set(EXC_FILES "taskEngine/taskEngine.cc;log.cc")  # 例如"src/a.cpp;src/b.cpp"
+set(EXC_FILES "taskEngine.cc;src/utils/log/log.cc")
+set(EXC_DIRS "/home/ygh/work/LPC/src/utils/log;/home/ygh/work/LPC/src/utils/taskEngine")  # 例如"xxx\yyy\;zzz\"
 
 # 1. cmake通用库
+include (CMakeParseArguments)
 #include(CMakeLists.template.txt)
 # 获取文件列表
-function(get_files_recurse files_out curdir filters)
-    set(globbing_exp "")
-    foreach(item ${filters})
-        message(STATUS "[get_filslist_recurse]item: ${item}")
-        list(APPEND globbing_exp "${curdir}/${item}")
-    endforeach()
-    #message(STATUS "[get_filslist_recurse]globbing_exp: ${globbing_exp}")
-    
-    #file(GLOB_RECURSE local_files LIST_DIRECTORIES false RELATIVE ${curdir} ${globbing_exp})
-    file(GLOB_RECURSE local_files LIST_DIRECTORIES false ${globbing_exp})
-    #file(GLOB_RECURSE local_files LIST_DIRECTORIES false ${filters})
-    #message(STATUS "[get_filslist_recurse]local_files: ${local_files}")
+function(get_files_recurse files_out curdir filters)    
+    #file(GLOB_RECURSE local_files LIST_DIRECTORIES false RELATIVE ${curdir} ${filters})
+    #file(RELATIVE_PATH rel_path "${CMAKE_CURRENT_SOURCE_DIR}" "${curdir}")
+    #list(TRANSFORM local_files PREPEND "${rel_path}/")
 
-    set(${files_out} ${local_files} PARENT_SCOPE)
-endfunction()
-
-function(get_files_recurse2 files_out curdir filters)    
-    file(GLOB_RECURSE local_files LIST_DIRECTORIES false *)
-    list(FILTER local_files INCLUDE REGEX ${filters})
+    file(GLOB_RECURSE local_files LIST_DIRECTORIES false RELATIVE ${curdir} ${filters})
+    list(TRANSFORM local_files PREPEND "${curdir}/")
     message(STATUS "[get_filslist_recurse]local_files: ${local_files}")
-
     set(${files_out} ${local_files} PARENT_SCOPE)
 endfunction()
-
-# 获取目录列表
+ 
+# 获取目录列表（满足filters的文件列表）
 function(get_dirs_recurse dirs_out curdir filters) 
     set(files "")
     
@@ -92,6 +85,50 @@ function(get_dirs_recurse dirs_out curdir filters)
     endif()
 endfunction()
 
+
+# 从in_list里面剔除excls，生成out_list
+function(list_exclution out_list in_list excls) 
+    string(JOIN "|" reg_exp ${excls})
+    list(FILTER in_list EXCLUDE REGEX "${reg_exp}")
+    set(${out_list} ${in_list} PARENT_SCOPE)
+endfunction()
+
+function(list_exclusion2)
+    set(options "")                    # 无开关选项
+    set(one_value_args "")             # 无单值参数 
+    set(multi_value_args 
+        list_var                                # 列表1（读写）
+        exclusions                               # 列表2（只读）
+    )
+    
+    cmake_parse_arguments(ARG 
+        "${options}" 
+        "${one_value_args}" 
+        "${multi_value_args}" 
+        ${ARGN}
+    )
+
+    # 获取列表内容
+    set(local_list ${ARG_list_var})
+    
+    # 构建和执行过滤
+    string(JOIN "|" pattern ${ARG_exclusions})
+    #list(FILTER local_list EXCLUDE REGEX ".*/(${pattern})$")
+    list(FILTER local_list EXCLUDE REGEX "${pattern}")
+    #message(STATUS "pattern: ${pattern}")
+    #message(STATUS "local_list: ${local_list}")
+    # 原地修改：设置回原变量名
+    if("${ARG_list_var}" STREQUAL "${sources}")
+	set(sources ${local_list} PARENT_SCOPE)
+        #message(STATUS "Modified sources in-place")
+    elseif("${ARG_list_var}" STREQUAL "${header_dirs}")
+	set(header_dirs ${local_list} PARENT_SCOPE)
+        #message(STATUS "Modified sources in-place")
+    else()
+        message(WARNING "Cannot determine variable name for in-place modification")
+    endif()
+endfunction()
+
 # 2.设置编译相关选项
 # cmake版本要求
 cmake_minimum_required(VERSION 3.16...3.27)
@@ -114,24 +151,18 @@ endif()
 # 3. 创建可执行文件
 # 可执行文件
 get_files_recurse(sources "${CMAKE_CURRENT_SOURCE_DIR}/${SRC_ROOT}" "${SRCEXTS}")
-#list(FILTER sources EXCLUDE REGEX ".cpp|.cc")
-#get_files_recurse2(sources "${CMAKE_CURRENT_SOURCE_DIR}/${SRC_ROOT}" ".*\\.(cpp|cxx|cc)$")
-#get_files_recurse2(sources "${CMAKE_CURRENT_SOURCE_DIR}/${SRC_ROOT}" "(.cpp)|(.cxx)|(.cc)")
-
-message(STATUS "xxxx: ${sources}")
-# 排除特定模式的文件
-
-
-#list(FILTER SOURCES EXCLUDE REGEX ".*_perf\\.cpp$")
-#list(FILTER SOURCES EXCLUDE REGEX ".*/experimental/.*")
+# 排除不需要的文件
+list_exclusion2(list_var ${sources} exclusions ${EXC_FILES})
+#message(STATUS "sources: ${sources}")
 add_executable(${PROJECT_NAME} ${sources})
 
 
 # 包含目录
 get_dirs_recurse(header_dirs "${CMAKE_CURRENT_SOURCE_DIR}/${SRC_ROOT}" "${HDREXTS}")
-target_include_directories(${PROJECT_NAME} PRIVATE
-    ${header_dirs}
-)
+# 排除不需要的目录
+list_exclusion2(list_var ${header_dirs} exclusions ${EXC_DIRS})
+#message(STATUS "header_dirs: ${header_dirs}")
+target_include_directories(${PROJECT_NAME} PRIVATE ${header_dirs})
 
 # 包含链接库
 find_package(Threads REQUIRED)
