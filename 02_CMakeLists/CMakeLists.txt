@@ -40,8 +40,8 @@ set(SRC_ROOT "src")
 set(SRCEXTS "*.c;*.cc;*.cpp")
 set(HDREXTS "*.h;*.hh;*.hpp")
 # 排除的文件和目录
-set(EXC_FILES "taskEngine.cc;src/utils/log/log.cc")# 例如"xxx/yyy.cc;zzz.cc", 相对与CMakeLists.txts所在位置的相对路径
-set(EXC_DIRS "src/utils/log")  		     # 例如"xxx/yyy;zzz", 相对与CMakeLists.txts所在位置的相对路径
+set(EXC_FILES "taskEngine.cc;src/utils/log/log.cc")# 例如"xxx/yyy.cc;zzz.cc", 相对CMakeLists.txts所在位置的相对路径
+set(EXC_DIRS "src/utils/log")  		     # 例如"xxx/yyy;zzz", 相对CMakeLists.txts所在位置的相对路径
 
 # 3.编译链接设定
 # CPPFLAGS: C PreProcessor Flags 传递给预处理器（cpp）的选项，如 -I（头文件路径）、-D（宏定义）、-U（取消宏）等。
@@ -86,11 +86,8 @@ include (CMakeParseArguments)
 # @param      file_extentions  入参-源码类型列表（如：*.c;*.cc;*.cpp）
 #
 # @sets       
-#
 # @example     
-#
 # @note       
-#
 #-------------------------------------------------------------------------------------------------
 function(get_files_recurse files_out curdir file_extentions) 
     list(TRANSFORM file_extentions PREPEND "${curdir}/")
@@ -115,11 +112,8 @@ endfunction()
 # @param      file_extentions  入参-头文件类型列表（如：*.h;*.hh;*.hpp）
 #
 # @sets       
-#
 # @example     
-#
 # @note       
-#
 #-------------------------------------------------------------------------------------------------
 function(get_dirs_recurse dirs_out curdir file_extentions) 
     set(files "")
@@ -161,11 +155,8 @@ endfunction()
 # @param      file_exclutions  入参-待排除文件列表（如：xx.c;yy.cc;zz.cpp）
 #
 # @sets       
-#
 # @example     
-#
 # @note       
-#
 #-------------------------------------------------------------------------------------------------
 function(files_exclusion files_excl files file_exclutions)
     # 获取列表内容
@@ -193,11 +184,8 @@ endfunction()
 # @param      dir_exclutions  入参-待排除目录列表（如：xx/yy;aa/bb/cc）
 #
 # @sets       
-#
 # @example     
-#
 # @note       
-#
 #-------------------------------------------------------------------------------------------------
 function(dirs_exclusion dirs_excl dirs dir_exclutions)
     # 获取列表内容
