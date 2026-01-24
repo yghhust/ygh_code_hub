@@ -6,6 +6,7 @@
 # Date:    2026/01/18    version 0.1  initial
 #          2026/01/19    version 0.2  新增目录排除、文件排除功能
 #          2026/01/19    version 0.3  新增编译链接选项设置
+#          2026/01/24    version 0.4  支持将源码所在目录设置为CMakeLists文件所在的根目录
 #
 # Description:  
 # ------------ 
@@ -35,7 +36,7 @@ set(MY_BIN "my_app")
 
 # 2.设置源码
 # 源码路径（相对CMakeLists路径）
-set(SRC_ROOT "src") 
+set(SRC_ROOT "src")    #set(SRC_ROOT ".") 表示源码所在目录为CMakeLists文件所在的根目录
 # 源码类型
 set(SRCEXTS "*.c;*.cc;*.cpp")
 set(HDREXTS "*.h;*.hh;*.hpp")
@@ -94,8 +95,11 @@ function(get_files_recurse files_out curdir file_extentions)
     file(GLOB_RECURSE local_files LIST_DIRECTORIES false RELATIVE ${curdir} ${file_extentions})
     #message(STATUS "get_files_recurse: local_files: ${local_files}")
     file(RELATIVE_PATH rel_path "${CMAKE_CURRENT_SOURCE_DIR}" "${curdir}")
-    list(TRANSFORM local_files PREPEND "${rel_path}/")
-
+    if(NOT rel_path) 
+       list(TRANSFORM local_files PREPEND "./")
+    else()
+       list(TRANSFORM local_files PREPEND "${rel_path}/")
+    endif()
     set(${files_out} ${local_files} PARENT_SCOPE)
 endfunction()
  
