@@ -7,6 +7,7 @@
 #          2026/01/19    version 0.2  新增目录排除、文件排除功能
 #          2026/01/19    version 0.3  新增编译链接选项设置
 #          2026/01/24    version 0.4  支持将源码所在目录设置为CMakeLists文件所在的根目录
+#          2026/01/28    version 0.5  排除文件为空时bug修复
 #
 # Description:  
 # ------------ 
@@ -163,6 +164,11 @@ endfunction()
 # @note       
 #-------------------------------------------------------------------------------------------------
 function(files_exclusion files_excl files file_exclutions)
+    if(file_exclutions STREQUAL "")
+        set(${files_excl} ${files} PARENT_SCOPE)
+        return()
+    endif()
+
     # 获取列表内容
     set(local_list ${files})
     
