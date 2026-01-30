@@ -85,6 +85,13 @@ public:
         print(color, std::forward<Args>(args)...);
         std::cout << std::endl;
     }
+
+    // 链式输出
+    template <typename T>
+    ColorCout &operator<<(const T &value) {
+        print(value);
+        return *this;
+    }
 };
 
 
