@@ -7,48 +7,60 @@
 
 #include <iostream>
 #include <string>
-#include <iomanip>
-#include <sstream>
+#include "format_utils.h"
+#include <string_view>
 
 // ANSI 颜色代码定义
 namespace Color {
-    // 前景色
-    constexpr const char* RESET = "\033[0m";
-    constexpr const char* BLACK = "\033[30m";
-    constexpr const char* RED = "\033[31m";
-    constexpr const char* GREEN = "\033[32m";
-    constexpr const char* YELLOW = "\033[33m";
-    constexpr const char* BLUE = "\033[34m";
-    constexpr const char* MAGENTA = "\033[35m";
-    constexpr const char* CYAN = "\033[36m";
-    constexpr const char* WHITE = "\033[37m";
+    // 使用结构体包装字符串视图
+    // 头文件中的推荐实现方式
+    struct ColorCode {
+        std::string_view value;
+
+        friend std::ostream &operator<<(std::ostream &os, const ColorCode &c) {
+            return os << c.value;
+        }
+    };
+
+    // 基础控制
+    constexpr ColorCode RESET{"\033[0m"};
+
+    // 标准前景色
+    constexpr ColorCode BLACK{"\033[30m"};
+    constexpr ColorCode RED{"\033[31m"};
+    constexpr ColorCode GREEN{"\033[32m"};
+    constexpr ColorCode YELLOW{"\033[33m"};
+    constexpr ColorCode BLUE{"\033[34m"};
+    constexpr ColorCode MAGENTA{"\033[35m"};
+    constexpr ColorCode CYAN{"\033[36m"};
+    constexpr ColorCode WHITE{"\033[37m"};
 
     // 亮色前景
-    constexpr const char* BOLD_BLACK = "\033[1;30m";
-    constexpr const char* BOLD_RED = "\033[1;31m";
-    constexpr const char* BOLD_GREEN = "\033[1;32m";
-    constexpr const char* BOLD_YELLOW = "\033[1;33m";
-    constexpr const char* BOLD_BLUE = "\033[1;34m";
-    constexpr const char* BOLD_MAGENTA = "\033[1;35m";
-    constexpr const char* BOLD_CYAN = "\033[1;36m";
-    constexpr const char* BOLD_WHITE = "\033[1;37m";
+    constexpr ColorCode BOLD_BLACK{"\033[1;30m"};
+    constexpr ColorCode BOLD_RED{"\033[1;31m"};
+    constexpr ColorCode BOLD_GREEN{"\033[1;32m"};
+    constexpr ColorCode BOLD_YELLOW{"\033[1;33m"};
+    constexpr ColorCode BOLD_BLUE{"\033[1;34m"};
+    constexpr ColorCode BOLD_MAGENTA{"\033[1;35m"};
+    constexpr ColorCode BOLD_CYAN{"\033[1;36m"};
+    constexpr ColorCode BOLD_WHITE{"\033[1;37m"};
 
     // 背景色
-    constexpr const char* BG_RED = "\033[41m";
-    constexpr const char* BG_GREEN = "\033[42m";
-    constexpr const char* BG_YELLOW = "\033[43m";
-    constexpr const char* BG_BLUE = "\033[44m";
-    constexpr const char* BG_MAGENTA = "\033[45m";
-    constexpr const char* BG_CYAN = "\033[46m";
-    constexpr const char* BG_WHITE = "\033[47m";
+    constexpr ColorCode BG_RED{"\033[41m"};
+    constexpr ColorCode BG_GREEN{"\033[42m"};
+    constexpr ColorCode BG_YELLOW{"\033[43m"};
+    constexpr ColorCode BG_BLUE{"\033[44m"};
+    constexpr ColorCode BG_MAGENTA{"\033[45m"};
+    constexpr ColorCode BG_CYAN{"\033[46m"};
+    constexpr ColorCode BG_WHITE{"\033[47m"};
 }
 
 class ColorCin {
 public:
     // 静态方法，直接输出带颜色的文本
-    static std::string getline(const std::string& color = Color::RESET) {
-        //设置输出颜色
-        std::cout << color;
+    static std::string getline(const std::string &prompt = "", const Color::ColorCode &color = Color::RESET) {
+        //设置输出颜色&输入提示
+        std::cout << color << prompt;
         //输入
         std::string input;
         std::getline(std::cin, input);
@@ -61,17 +73,23 @@ public:
 
 class ColorCout {
 public:
-    // 无颜色版本
-    template<typename... Args>
-    static void print(Args&&... args) {
-        ((std::cout << args), ...);
+    // 单参版本
+    template<typename T>
+    static void print(const T &value, const Color::ColorCode &color = Color::RESET) {
+        std::cout << color << value << Color::RESET;
     }
 
-    // 有颜色版本
+    // 多参格式化版本
     template<typename... Args>
-    static void print(const char* color, Args&&... args) {
+    static void print(const std::string &fmt, Args &&... args) {
+        std::cout << Formatter::format(fmt, std::forward<Args>(args)...);
+    }
+
+    // 多参格式化版本(带颜色设置)
+    template<typename... Args>
+    static void print(const Color::ColorCode &color, const std::string &fmt, Args &&... args) {
         std::cout << color;
-        ((std::cout << std::forward<Args>(args)), ...);
+        std::cout << Formatter::format(fmt, std::forward<Args>(args)...);
         std::cout << Color::RESET;
     }
 
@@ -89,7 +107,7 @@ public:
     }
 
     // 链式输出
-    template <typename T>
+    template<typename T>
     ColorCout &operator<<(const T &value) {
         print(value);
         return *this;
