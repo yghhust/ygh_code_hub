@@ -7,6 +7,8 @@
 
 #include <iostream>
 #include <string>
+#include <iomanip>
+#include <sstream>
 
 // ANSI 颜色代码定义
 namespace Color {
@@ -137,4 +139,33 @@ private:
     }
 };
 
+class Formatter {
+private:
+    std::ostringstream oss;
+
+public:
+    // 各种格式化方法
+    Formatter& width(int w) { oss << std::setw(w); return *this; }
+    Formatter& fill(char c) { oss << std::setfill(c); return *this; }
+    Formatter& precision(int p) { oss << std::setprecision(p); return *this; }
+    Formatter& fixed() { oss << std::fixed; return *this; }
+    Formatter& scientific() { oss << std::scientific; return *this; }
+    Formatter& hex() { oss << std::hex; return *this; }
+    Formatter& dec() { oss << std::dec; return *this; }
+    Formatter& oct() { oss << std::oct; return *this; }
+
+    // 模板方法添加任意值
+    template<typename T>
+    Formatter& add(const T& value) {
+        oss << value;
+        return *this;
+    }
+
+    // 转换为字符串
+    std::string str() const { return oss.str(); }
+    operator std::string() const { return oss.str(); }
+
+    // 直接输出
+    void print() const { std::cout << oss.str(); }
+};
 #endif
