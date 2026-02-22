@@ -1,3 +1,37 @@
+/**
+ * @file auto_register.h
+ * @brief 自动注册与惰性实例化框架
+ * 
+ * 本文件实现了一个通用的类/对象自动注册系统，支持：
+ * - 按类名或命名实例注册
+ * - 支持无参构造及自定义 Lambda 创建器
+ * - 支持带初始化的注册（初始化函数可在首次获取实例时或执行阶段调用）
+ * - 支持优先级控制初始化顺序
+ * - 支持宏方式在全局作用域自动完成注册
+ * - 线程安全（使用 std::mutex 保护注册表与实例缓存）
+ *
+ * 主要用途：
+ * 1. 在大型项目中集中管理类的创建与初始化，避免手动 new/delete
+ * 2. 实现插件化架构，通过注册表动态创建对象
+ * 3. 控制初始化顺序，解决跨模块依赖
+ *
+ * 使用方式：
+ * - 在类定义文件中使用宏 AUTO_REGISTER_CLASS、AUTO_REGISTER_CLASS_WITH_INITFUNC 等完成自动注册
+ * - 在需要实例时调用 AutoRegister::instance().getInstance<T>("ClassName")
+ * - 在程序启动阶段调用 executeAllInits() 或 executePriorInits() 执行初始化
+ *
+ * 注意事项：
+ * - 注册宏必须在全局或命名空间作用域使用，不能在函数内（因涉及静态变量初始化）
+ * - 对于带初始化的注册，初始化函数签名需匹配（如 std::function<void(T&)>）
+ * - 本实现使用 shared_ptr<void> 作为统一存储，确保不同类型可共存于同一注册表
+ * - 对于 void 类型的注册，初始化函数不会进行解引用操作
+ *
+ * @author yuguohua<ghy_hust@qq.com>
+ * @date 2026-02-22
+ * @version 1.0
+ * @copyright Copyright (c) 2026
+ */
+
 #pragma once
 #include <unordered_map>
 #include <memory>
@@ -60,11 +94,11 @@ private:
         };
 
         // 包装 initializer
-	auto initWrapper = [this, key, initFunc = std::forward<InitFunc>(init)]() {
-	    auto inst = lazyCreateInstanceImpl<T>(key);
-	    if constexpr (!std::is_same_v<std::decay_t<InitFunc>, std::nullptr_t>) {
-	       initFunc(*std::static_pointer_cast<T>(inst));
-	    }
+        auto initWrapper = [this, key, initFunc = std::forward<InitFunc>(init)]() {
+            auto inst = lazyCreateInstanceImpl<T>(key);
+            if constexpr (!std::is_same_v<std::decay_t<InitFunc>, std::nullptr_t>) {
+               initFunc(*std::static_pointer_cast<T>(inst));
+            }
         };
         
         
@@ -159,8 +193,8 @@ public:
 
     // 7. 命名类实例自动注册
     template<typename T>
-    void registerNamedInstance(const std::string& instance_name,
-                              const std::string& class_name,
+    void registerNamedInstance(const std::string& class_name,
+                              const std::string& instance_name,
                               int priority = 5) {
         registerEntry<T>(makeFullName(class_name, instance_name),
                       []() { return std::make_shared<T>(); },
@@ -169,8 +203,8 @@ public:
 
     // 8. 命名类实例自动注册 (带初始化)
     template<typename T>
-    void registerNamedInstanceWithInit(const std::string& instance_name,
-                                       const std::string& class_name,
+    void registerNamedInstanceWithInit(const std::string& class_name,
+                                       const std::string& instance_name,
                                        std::function<void(T&)> init_func,
                                        int priority = 5) {
         registerEntryWithInit<T>(makeFullName(class_name, instance_name),
@@ -370,7 +404,7 @@ public:
     }
 };
 
-// ==================== 统一宏实现 ====================
+// ==================== 统一宏实现（已规范命名） ====================
 
 #define _AUTO_REGISTER_IMPL(UNIQUE_NAME, REGISTER_CALL) \
     static auto UNIQUE_NAME = []() -> auto& { \
@@ -392,73 +426,90 @@ public:
         ::AutoRegister::instance().registerClass<CLASS_NAME>(#CLASS_NAME, PRIORITY) \
     )
 
-#define AUTO_REGISTER_CLASS_WITH_INIT(CLASS_NAME, INIT_MEMBER_FUNC) \
-    AUTO_REGISTER_CLASS_WITH_INIT_PRIORITY(CLASS_NAME, INIT_MEMBER_FUNC, 5)
+#define AUTO_REGISTER_CLASS_WITH_INITFUNC(CLASS_NAME, INIT_MEMBER_FUNC) \
+    AUTO_REGISTER_CLASS_WITH_INITFUNC_PRIORITY(CLASS_NAME, INIT_MEMBER_FUNC, 5)
 
-#define AUTO_REGISTER_CLASS_WITH_INIT_PRIORITY(CLASS_NAME, INIT_MEMBER_FUNC, PRIORITY) \
+#define AUTO_REGISTER_CLASS_WITH_INITFUNC_PRIORITY(CLASS_NAME, INIT_MEMBER_FUNC, PRIORITY) \
     _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_AutoRegister, \
         ::AutoRegister::instance().registerClassWithInit<CLASS_NAME>( \
             #CLASS_NAME, [](CLASS_NAME& obj) { obj.INIT_MEMBER_FUNC(); }, PRIORITY) \
     )
 
-#define AUTO_REGISTER_CLASS_WITH_LAMBDA(CLASS_NAME, LAMBDA_INIT) \
-    AUTO_REGISTER_CLASS_WITH_LAMBDA_PRIORITY(CLASS_NAME, LAMBDA_INIT, 5)
+#define AUTO_REGISTER_CLASS_WITH_INIT(CLASS_NAME, INIT_LAMBDA) \
+    AUTO_REGISTER_CLASS_WITH_INIT_PRIORITY(CLASS_NAME, INIT_LAMBDA, 5)
 
-#define AUTO_REGISTER_CLASS_WITH_LAMBDA_PRIORITY(CLASS_NAME, LAMBDA_INIT, PRIORITY) \
+#define AUTO_REGISTER_CLASS_WITH_INIT_PRIORITY(CLASS_NAME, INIT_LAMBDA, PRIORITY) \
     _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_AutoRegister, \
         ::AutoRegister::instance().registerClassWithInit<CLASS_NAME>( \
-            #CLASS_NAME, LAMBDA_INIT, PRIORITY) \
+            #CLASS_NAME, INIT_LAMBDA, PRIORITY) \
     )
 
-#define AUTO_REGISTER_NAMED_INSTANCE(CLASS_NAME, INSTANCE_NAME) \
+#define AUTO_REGISTER_CLASS_INSTANCE(CLASS_NAME, INSTANCE_NAME) \
     _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_##INSTANCE_NAME##_AutoRegister, \
-        ::AutoRegister::instance().registerNamedInstance<CLASS_NAME>(INSTANCE_NAME, #CLASS_NAME) \
+        ::AutoRegister::instance().registerNamedInstance<CLASS_NAME>(#CLASS_NAME, #INSTANCE_NAME) \
     )
 
-#define AUTO_REGISTER_NAMED_INSTANCE_WITH_INIT(CLASS_NAME, INSTANCE_NAME, INIT_MEMBER_FUNC) \
-    AUTO_REGISTER_NAMED_INSTANCE_WITH_INIT_PRIORITY(CLASS_NAME, INSTANCE_NAME, INIT_MEMBER_FUNC, 5)
+#define AUTO_REGISTER_CLASS_INSTANCE_WITH_INITFUNC(CLASS_NAME, INSTANCE_NAME, INIT_MEMBER_FUNC) \
+    AUTO_REGISTER_CLASS_INSTANCE_WITH_INITFUNC_PRIORITY(CLASS_NAME, INSTANCE_NAME, INIT_MEMBER_FUNC, 5)
 
-#define AUTO_REGISTER_NAMED_INSTANCE_WITH_INIT_PRIORITY(CLASS_NAME, INSTANCE_NAME, INIT_MEMBER_FUNC, PRIORITY) \
+#define AUTO_REGISTER_CLASS_INSTANCE_WITH_INITFUNC_PRIORITY(CLASS_NAME, INSTANCE_NAME, INIT_MEMBER_FUNC, PRIORITY) \
     _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_##INSTANCE_NAME##_AutoRegister, \
-        ::AutoRegister::instance().registerNamedInstanceWithInit<CLASS_NAME>(INSTANCE_NAME, \
-            #CLASS_NAME, [](CLASS_NAME& obj) { obj.INIT_MEMBER_FUNC(); }, PRIORITY) \
+        ::AutoRegister::instance().registerNamedInstanceWithInit<CLASS_NAME>(#CLASS_NAME, \
+            #INSTANCE_NAME, [](CLASS_NAME& obj) { obj.INIT_MEMBER_FUNC(); }, PRIORITY) \
     )
 
-#define AUTO_REGISTER_NAMED_INSTANCE_WITH_LAMBDA(CLASS_NAME, INSTANCE_NAME, LAMBDA_INIT) \
-    AUTO_REGISTER_NAMED_INSTANCE_WITH_LAMBDA_PRIORITY(CLASS_NAME, INSTANCE_NAME, LAMBDA_INIT, 5)
+#define AUTO_REGISTER_CLASS_INSTANCE_WITH_INIT(CLASS_NAME, INSTANCE_NAME, INIT_LAMBDA) \
+    AUTO_REGISTER_CLASS_INSTANCE_WITH_INIT_PRIORITY(CLASS_NAME, INSTANCE_NAME, INIT_LAMBDA, 5)
 
-#define AUTO_REGISTER_NAMED_INSTANCE_WITH_LAMBDA_PRIORITY(CLASS_NAME, INSTANCE_NAME, LAMBDA_INIT, PRIORITY) \
+#define AUTO_REGISTER_CLASS_INSTANCE_WITH_INIT_PRIORITY(CLASS_NAME, INSTANCE_NAME, INIT_LAMBDA, PRIORITY) \
     _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_##INSTANCE_NAME##_AutoRegister, \
-        ::AutoRegister::instance().registerNamedInstanceWithInit<CLASS_NAME>(INSTANCE_NAME, \
-            #CLASS_NAME, LAMBDA_INIT, PRIORITY) \
+        ::AutoRegister::instance().registerNamedInstanceWithInit<CLASS_NAME>(#CLASS_NAME, \
+            #INSTANCE_NAME, INIT_LAMBDA, PRIORITY) \
     )
 
-#define AUTO_REGISTER_LAMBDA_CREATOR(CLASS_NAME, CREATOR_LAMBDA) \
+// --- Class Creator Macros ---
+#define AUTO_REGISTER_CLASS_CREATOR(CLASS_NAME, CREATOR_LAMBDA) \
     _AUTO_REGISTER_IMPL( \
-        CLASS_NAME##_LambdaAutoRegister, \
+        CLASS_NAME##_ClassCreatorAutoRegister, \
         ::AutoRegister::instance().registerCreator<CLASS_NAME>(#CLASS_NAME, CREATOR_LAMBDA) \
     )
 
-#define AUTO_REGISTER_LAMBDA_CREATOR_WITH_INIT(CLASS_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
+// 新增：带成员函数初始化的类创建器
+#define AUTO_REGISTER_CLASS_CREATOR_WITH_INITFUNC(CLASS_NAME, CREATOR_LAMBDA, INIT_MEMBER_FUNC) \
     _AUTO_REGISTER_IMPL( \
-        CLASS_NAME##_LambdaInitAutoRegister, \
+        CLASS_NAME##_ClassCreatorInitFuncAutoRegister, \
+        ::AutoRegister::instance().registerCreatorWithInit<CLASS_NAME>(#CLASS_NAME, CREATOR_LAMBDA, [](CLASS_NAME& obj){ obj.INIT_MEMBER_FUNC(); }) \
+    )
+
+// 修正：带 Lambda 初始化的类创建器
+#define AUTO_REGISTER_CLASS_CREATOR_WITH_INIT(CLASS_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
+    _AUTO_REGISTER_IMPL( \
+        CLASS_NAME##_ClassCreatorInitAutoRegister, \
         ::AutoRegister::instance().registerCreatorWithInit<CLASS_NAME>(#CLASS_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
     )
 
-#define AUTO_REGISTER_LAMBDA_NAMED_CREATOR(CLASS_NAME, INSTANCE_NAME, CREATOR_LAMBDA) \
+// 修正：命名实例的类创建器
+#define AUTO_REGISTER_CLASS_CREATOR_INSTANCE(CLASS_NAME, INSTANCE_NAME, CREATOR_LAMBDA) \
     _AUTO_REGISTER_IMPL( \
-        CLASS_NAME##_##INSTANCE_NAME##_LambdaAutoRegister, \
+        CLASS_NAME##_##INSTANCE_NAME##_ClassCreatorAutoRegister, \
         ::AutoRegister::instance().registerNamedCreator<CLASS_NAME>(#CLASS_NAME, #INSTANCE_NAME, CREATOR_LAMBDA) \
     )
 
-#define AUTO_REGISTER_LAMBDA_NAMED_CREATOR_WITH_INIT(CLASS_NAME, INSTANCE_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
+// 新增：带成员函数初始化的命名实例的类创建器
+#define AUTO_REGISTER_CLASS_CREATOR_INSTANCE_WITH_INITFUNC(CLASS_NAME, INSTANCE_NAME, CREATOR_LAMBDA, INIT_MEMBER_FUNC) \
     _AUTO_REGISTER_IMPL( \
-        CLASS_NAME##_##INSTANCE_NAME##_LambdaInitAutoRegister, \
-        ::AutoRegister::instance().registerNamedCreatorWithInit<CLASS_NAME>(#INSTANCE_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
+        CLASS_NAME##_##INSTANCE_NAME##_ClassCreatorInitFuncAutoRegister, \
+        ::AutoRegister::instance().registerNamedCreatorWithInit<CLASS_NAME>(#CLASS_NAME, #INSTANCE_NAME, CREATOR_LAMBDA, [](CLASS_NAME& obj){ obj.INIT_MEMBER_FUNC(); }) \
     )
 
+// 修正：带 Lambda 初始化的命名实例的类创建器
+#define AUTO_REGISTER_CLASS_CREATOR_INSTANCE_WITH_INIT(CLASS_NAME, INSTANCE_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
+    _AUTO_REGISTER_IMPL( \
+        CLASS_NAME##_##INSTANCE_NAME##_ClassCreatorInitAutoRegister, \
+        ::AutoRegister::instance().registerNamedCreatorWithInit<CLASS_NAME>(#CLASS_NAME, #INSTANCE_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
+    )

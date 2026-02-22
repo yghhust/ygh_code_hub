@@ -1,276 +1,207 @@
+/**
+ * @file example.cpp
+ * @brief 演示 auto_register.h 中所有宏的用法
+ */
+
 #include "auto_register.h"
 #include <iostream>
 #include <string>
-#include <memory>
 
-// ==================== 服务类定义 ====================
+// --- 测试类定义 ---
 
-// 配置类
-class Config {
+// 1. 基础类，无初始化
+class SimpleService {
 public:
-    std::string app_name = "DefaultApp";
-    std::string db_host = "localhost";
-    int db_port = 3306;
-    bool debug_mode = false;
-    
-    void load(const std::string& filename) {
-        std::cout << "[Config] Loading from " << filename << std::endl;
-        // 模拟加载配置
+    std::string name = "SimpleService_Default";
+    void sayHello() {
+        std::cout << "[SimpleService] Hello from " << name << std::endl;
     }
 };
 
-// 日志类
-class Logger {
+// 2. 带初始化函数的类
+class ConfiguredService {
 public:
-    std::string level = "INFO";
+    int value = 0;
+    std::string config = "default";
     
-    void setLevel(const std::string& lvl) {
-        level = lvl;
-        std::cout << "[Logger] Level set to: " << level << std::endl;
+    void init() {
+        value = 42;
+        config = "initialized_by_member_func";
+        std::cout << "[ConfiguredService] Initialized by member function 'init()'. Value: " << value << std::endl;
     }
     
-    void log(const std::string& msg) {
-        std::cout << "[" << level << "] " << msg << std::endl;
+    void show() {
+        std::cout << "[ConfiguredService] Value: " << value << ", Config: " << config << std::endl;
     }
 };
 
-// 数据库服务
-class DatabaseService {
+// 3. 使用 Lambda 初始化的类
+class LambdaInitializedService {
 public:
-    std::string connection_string;
-    std::shared_ptr<Config> config;
-    std::shared_ptr<Logger> logger;
-    bool connected = false;
+    double factor = 1.0;
+    std::string mode = "off";
+    
+    void setup() {
+        std::cout << "[LambdaInitializedService] Setup complete. Factor: " << factor << ", Mode: " << mode << std::endl;
+    }
+};
+
+// 4. 命名实例类
+class DatabaseConnection {
+public:
+    std::string connectionString;
+    bool isConnected = false;
     
     void connect() {
-        connection_string = "mysql://" + config->db_host + ":" + std::to_string(config->db_port);
-        connected = true;
-        logger->log("Connected to: " + connection_string);
-    }
-    
-    void disconnect() {
-        connected = false;
-        logger->log("Disconnected");
+        isConnected = true;
+        std::cout << "[DatabaseConnection] Connected to: " << connectionString << std::endl;
     }
 };
 
-class ComplexService {
+// 5. 使用创建器的类
+class ComplexObject {
 public:
-    std::string connection_string;
-    std::shared_ptr<Config> config;
-    std::shared_ptr<Logger> logger;
-    bool connected = false;
-    
-    void connect() {
-        connection_string = "mysql://" + config->db_host + ":" + std::to_string(config->db_port);
-        connected = true;
-        logger->log("Connected to: " + connection_string);
-    }
-    
-    void disconnect() {
-        connected = false;
-        logger->log("Disconnected");
+    int id;
+    std::string type;
+    ComplexObject(int i, const std::string& t) : id(i), type(t) {}
+    void describe() {
+        std::cout << "[ComplexObject] ID: " << id << ", Type: " << type << std::endl;
     }
 };
 
-// API 服务
-class ApiService {
-public:
-    std::string base_url;
-    int port = 8080;
-    std::shared_ptr<DatabaseService> database;
-    std::shared_ptr<Logger> logger;
-    
-    void start() {
-        base_url = "http://localhost:" + std::to_string(port);
-        logger->log("API started on " + base_url);
-    }
-    
-    void stop() {
-        logger->log("API stopped");
-    }
-};
 
-// ==================== 外部依赖（将在 lambda 中捕获） ====================
- #if 1
- AUTO_REGISTER_LAMBDA_CREATOR(DatabaseService,
-        ([]() {
-            auto db = std::make_shared<DatabaseService>();
-            //db->config = config;
-            //db->logger = logger;
-            return db;
-        })
-    );
+// --- 使用宏进行注册 ---
+
+// 1. 基础类自动注册
+AUTO_REGISTER_CLASS(SimpleService);
+
+// 2. 带成员函数初始化的类注册
+AUTO_REGISTER_CLASS_WITH_INITFUNC(ConfiguredService, init);
+
+// 3. 带 Lambda 初始化的类注册
+AUTO_REGISTER_CLASS_WITH_INIT(LambdaInitializedService, [](LambdaInitializedService& s) {
+    s.factor = 3.14;
+    s.mode = "active";
+});
+
+// 4. 命名类实例注册
+AUTO_REGISTER_CLASS_INSTANCE(DatabaseConnection, PrimaryDB);
+#if 1
+// 5. 带成员函数初始化的命名实例
+AUTO_REGISTER_CLASS_INSTANCE_WITH_INITFUNC(DatabaseConnection, SecondaryDB, connect);
+
+// 6. 带 Lambda 初始化的命名实例
+AUTO_REGISTER_CLASS_INSTANCE_WITH_INIT(DatabaseConnection, ReadReplica, [](DatabaseConnection& db) {
+    db.connectionString = "jdbc:mysql://replica.host/db";
+    db.isConnected = true;
+});
+
+// 7. 类创建器注册 (Lambda)
+AUTO_REGISTER_CLASS_CREATOR(ComplexObject, []() {
+    return std::make_shared<ComplexObject>(100, "CreatorLambda");
+});
+
+// 8. 类创建器带成员函数初始化
+AUTO_REGISTER_CLASS_CREATOR_WITH_INITFUNC(ComplexObject, []() {
+    return std::make_shared<ComplexObject>(200, "CreatorInitFunc");
+}, describe);
+
+// 9. 类创建器带 Lambda 初始化
+AUTO_REGISTER_CLASS_CREATOR_WITH_INIT(ComplexObject, []() {
+    return std::make_shared<ComplexObject>(300, "CreatorLambdaInit");
+}, [](ComplexObject& obj) {
+    obj.id += 1000; // Modify after creation
+});
+
+// 10. 命名实例的类创建器
+AUTO_REGISTER_CLASS_CREATOR_INSTANCE(ComplexObject, InstanceAlpha, []() {
+    return std::make_shared<ComplexObject>(400, "InstCreatorAlpha");
+});
+
+// 11. 命名实例的类创建器带成员函数初始化
+AUTO_REGISTER_CLASS_CREATOR_INSTANCE_WITH_INITFUNC(ComplexObject, InstanceBeta, []() {
+    return std::make_shared<ComplexObject>(500, "InstCreatorBeta");
+}, describe);
+
+// 12. 命名实例的类创建器带 Lambda 初始化
+AUTO_REGISTER_CLASS_CREATOR_INSTANCE_WITH_INIT(ComplexObject, InstanceGamma, []() {
+    return std::make_shared<ComplexObject>(600, "InstCreatorGamma");
+}, [](ComplexObject& obj) {
+    obj.type = "ModifiedByLambda";
+});
+
 #endif
-// 全局/外部依赖
-std::shared_ptr<Config> g_config;
-std::shared_ptr<Logger> g_logger;
-bool g_enable_feature_x = true;
-
-// ==================== 主函数演示 ====================
-
+// --- 主函数 ---
 int main() {
-    std::cout << "=== Lambda 定制注册演示 ===" << std::endl;
-    
-    // 1. 准备外部依赖
-    std::cout << "\n--- 步骤1: 准备外部依赖 ---" << std::endl;
-    g_config = std::make_shared<Config>();
-    g_config->app_name = "MyApplication";
-    g_config->db_host = "192.168.1.100";
-    g_config->db_port = 5432;
-    g_config->debug_mode = true;
-    
-    g_logger = std::make_shared<Logger>();
-    g_logger->setLevel("DEBUG");
-    
-    std::cout << "配置已准备: " << g_config->app_name << std::endl;
-    std::cout << "日志已准备: " << g_logger->level << std::endl;
-    
-    // 2. 使用 Lambda 定制注册服务
-    std::cout << "\n--- 步骤2: Lambda 定制注册 ---" << std::endl;
-    
-    // 方式1：最简 Lambda 注册（捕获外部变量）
-    std::cout << "\n[方式1] 最简 Lambda 注册:" << std::endl;
-    AUTO_REGISTER_LAMBDA_CREATOR(DatabaseService, 
-	    ([config = g_config, logger = g_logger]() {
-	    auto db = std::make_shared<DatabaseService>();
-	    db->config = config;
-	    db->logger = logger;
-	    return db;
-	    })
-    );
-    
-  
-    // 方式2：带初始化的 Lambda 注册
-    std::cout << "\n[方式2] 带初始化的 Lambda 注册:" << std::endl;
-    AUTO_REGISTER_LAMBDA_CREATOR_WITH_INIT(ApiService,
-        [logger = g_logger]() {
-            auto api = std::make_shared<ApiService>();
-            api->logger = logger;
-            api->port = 3000;  // 覆盖默认值
-            return api;
-        },
-        [](ApiService& api) {
-            // 显式初始化（此时可以访问已注入的依赖）
-            api.database = AutoRegister::instance().getInstance<DatabaseService>("DatabaseService");
-            api.start();
-        }
-    );
-     
-   #if 0
-    // 方式3：条件创建 Lambda 注册
-    std::cout << "\n[方式3] 条件创建 Lambda 注册:" << std::endl;
-    AUTO_REGISTER_LAMBDA_CREATOR(int,
-        [enabled = g_enable_feature_x]() -> std::shared_ptr<void> {
-            if (!enabled) {
-                std::cout << "[FeatureX] Feature disabled, returning null" << std::endl;
-                return nullptr;
-            }
-            std::cout << "[FeatureX] Creating feature service" << std::endl;
-            // 返回实际的服务实例
-            return std::make_shared<int>(42);  // 示例
-        }
-    );
-    #endif
-    
-     #if 1
-    // 方式4：复杂创建逻辑的 Lambda 注册
-    std::cout << "\n[方式4] 复杂创建逻辑 Lambda 注册:" << std::endl;
-    AUTO_REGISTER_LAMBDA_CREATOR(ComplexService,
-        ([&config = g_config, &logger = g_logger]() {
-            std::cout << "[ComplexService] Starting complex initialization..." << std::endl;
-            
-            // 创建多个子组件
-            auto service = std::make_shared<ComplexService>();
-            service->config = config;
-            service->logger = logger;
-            
-            // 执行验证
-            if (config->db_port <= 0 || config->db_port > 65535) {
-                throw std::runtime_error("Invalid database port");
-            }
-            
-            std::cout << "[ComplexService] Complex initialization complete" << std::endl;
-            return service;
-        })
-    );
-    
-    // 方式5：命名实例 Lambda 注册
-    std::cout << "\n[方式5] 命名实例 Lambda 注册:" << std::endl;
-    AUTO_REGISTER_LAMBDA_NAMED_CREATOR(Config, primary,
-        [config = g_config]() {
-            auto cfg = std::make_shared<Config>();
-            *cfg = *config;  // 复制配置
-            cfg->app_name = "PrimaryConfig";
-            return cfg;
-        }
-    );
-    
-    AUTO_REGISTER_LAMBDA_NAMED_CREATOR(Config, secondary,
-        []() {
-            auto cfg = std::make_shared<Config>();
-            cfg->app_name = "SecondaryConfig";
-            cfg->db_host = "backup-server";
-            cfg->db_port = 3306;
-            return cfg;
-        }
-    );
-    #endif
-    // 打印注册状态
-    std::cout << "\n--- 注册状态 ---" << std::endl;
+    std::cout << "========================================" << std::endl;
+    std::cout << "   AutoRegister Framework Demo         " << std::endl;
+    std::cout << "========================================" << std::endl;
+
+    // 打印注册表信息
     AutoRegister::instance().printRegistry();
-    
-    // 3. 执行初始化
-    std::cout << "\n--- 步骤3: 执行初始化 ---" << std::endl;
+    std::cout << std::endl;
+
+    // 执行所有初始化 (会触发带初始化的注册的 init 函数)
+    std::cout << "--- Executing all initializers ---" << std::endl;
     AutoRegister::instance().executeAllInits();
-    
-    // 4. 获取和使用实例
-    std::cout << "\n--- 步骤4: 获取和使用实例 ---" << std::endl;
-    
-    // 获取数据库服务
-    auto& reg = AutoRegister::instance();
-    auto db_service = reg.getInstance<DatabaseService>("DatabaseService");
-    if (db_service) {
-        std::cout << "\n数据库服务:" << std::endl;
-        std::cout << "  - 连接字符串: " << db_service->connection_string << std::endl;
-        std::cout << "  - 已连接: " << (db_service->connected ? "是" : "否") << std::endl;
-        std::cout << "  - 配置来源: " << db_service->config->app_name << std::endl;
+    std::cout << std::endl;
+
+    // 获取并使用实例
+    std::cout << "--- Getting and using instances ---" << std::endl;
+
+    // 1. SimpleService
+    auto simple = AutoRegister::instance().getInstance<SimpleService>("SimpleService");
+    if (simple) simple->sayHello();
+
+    // 2. ConfiguredService (already initialized)
+    auto configured = AutoRegister::instance().getInstance<ConfiguredService>("ConfiguredService");
+    if (configured) configured->show();
+
+    // 3. LambdaInitializedService (already initialized)
+    auto lambdaInit = AutoRegister::instance().getInstance<LambdaInitializedService>("LambdaInitializedService");
+    if (lambdaInit) lambdaInit->setup();
+
+    // 4. Named DB Instances
+    auto primaryDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("DatabaseConnection", "PrimaryDB");
+    if (primaryDb) {
+        std::cout << "[Main] PrimaryDB created. Connecting now..." << std::endl;
+        primaryDb->connect();
     }
-    
-    // 获取 API 服务
-    auto api_service = reg.getInstance<ApiService>("ApiService");
-    if (api_service) {
-        std::cout << "\nAPI 服务:" << std::endl;
-        std::cout << "  - 基础 URL: " << api_service->base_url << std::endl;
-        std::cout << "  - 端口: " << api_service->port << std::endl;
-        std::cout << "  - 数据库依赖: " << (api_service->database ? "已注入" : "未注入") << std::endl;
+
+    auto secondaryDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("DatabaseConnection", "SecondaryDB");
+    if (secondaryDb) {
+        std::cout << "[Main] SecondaryDB state: " << (secondaryDb->isConnected ? "Connected" : "Disconnected") << std::endl;
     }
-    
-    // 获取命名配置实例
-    auto primary_config = reg.getInstanceByName<Config>("primary", "Config");
-    auto secondary_config = reg.getInstanceByName<Config>("secondary", "Config");
-    
-    if (primary_config) {
-        std::cout << "\n主配置:" << std::endl;
-        std::cout << "  - 应用名: " << primary_config->app_name << std::endl;
-        std::cout << "  - 数据库主机: " << primary_config->db_host << std::endl;
+
+    auto replicaDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("DatabaseConnection", "ReadReplica");
+    if (replicaDb) {
+        std::cout << "[Main] ReplicaDB connected to: " << replicaDb->connectionString << std::endl;
     }
-    
-    if (secondary_config) {
-        std::cout << "\n次配置:" << std::endl;
-        std::cout << "  - 应用名: " << secondary_config->app_name << std::endl;
-        std::cout << "  - 数据库主机: " << secondary_config->db_host << std::endl;
-    }
-    
-    // 获取条件服务（可能为空）
-    //auto feature_x = reg.getInstance<FeatureXService>();
-    //std::cout << "\n功能X服务: " << (feature_x ? "已创建" : "未创建（已禁用）") << std::endl;
-    
-    // 打印最终状态
-    std::cout << "\n--- 最终状态 ---" << std::endl;
-    reg.printInstances();
-    
-    std::cout << "\n=== 演示完成 ===" << std::endl;
-    
+
+    // 5. ComplexObjects from Creators
+    auto creatorObj = AutoRegister::instance().getInstance<ComplexObject>("ComplexObject");
+    if (creatorObj) creatorObj->describe();
+
+    auto creatorInitFuncObj = AutoRegister::instance().getInstance<ComplexObject>("ComplexObject");
+    if (creatorInitFuncObj) creatorInitFuncObj->describe();
+
+    auto creatorLambdaInitObj = AutoRegister::instance().getInstance<ComplexObject>("ComplexObject");
+    if (creatorLambdaInitObj) creatorLambdaInitObj->describe();
+
+    // 6. Named ComplexObject Instances from Creators
+    auto alpha = AutoRegister::instance().getInstanceByName<ComplexObject>("ComplexObject", "InstanceAlpha");
+    if (alpha) alpha->describe();
+
+    auto beta = AutoRegister::instance().getInstanceByName<ComplexObject>("ComplexObject", "InstanceBeta");
+    if (beta) beta->describe();
+
+    auto gamma = AutoRegister::instance().getInstanceByName<ComplexObject>("ComplexObject", "InstanceGamma");
+    if (gamma) gamma->describe();
+
+
+    std::cout << std::endl;
+    std::cout << "--- Final Instance Count: " << AutoRegister::instance().getInstanceCount() << " ---" << std::endl;
+    AutoRegister::instance().printInstances();
+
     return 0;
 }
