@@ -86,7 +86,7 @@ AUTO_REGISTER_CLASS_WITH_INIT(LambdaInitializedService, [](LambdaInitializedServ
 
 // 4. 命名类实例注册
 AUTO_REGISTER_CLASS_INSTANCE(DatabaseConnection, PrimaryDB);
-#if 1
+
 // 5. 带成员函数初始化的命名实例
 AUTO_REGISTER_CLASS_INSTANCE_WITH_INITFUNC(DatabaseConnection, SecondaryDB, connect);
 
@@ -130,7 +130,6 @@ AUTO_REGISTER_CLASS_CREATOR_INSTANCE_WITH_INIT(ComplexObject, InstanceGamma, [](
     obj.type = "ModifiedByLambda";
 });
 
-#endif
 // --- 主函数 ---
 int main() {
     std::cout << "========================================" << std::endl;

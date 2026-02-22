@@ -331,8 +331,7 @@ public:
     template<typename T>
     std::shared_ptr<T> forceInitNamed(const std::string& class_name,
                                       const std::string& instance_name) {
-        std::string full_name = makeFullName(class_name, instance_name);
-        return lazyCreateInstanceImpl<T>(full_name);
+        return lazyCreateInstanceImpl<T>(makeFullName(class_name, instance_name));
     }
 
     // 核心惰性创建实现（带类型参数）
@@ -404,7 +403,7 @@ public:
     }
 };
 
-// ==================== 统一宏实现（已规范命名） ====================
+// ==================== 统一宏实现 ====================
 
 #define _AUTO_REGISTER_IMPL(UNIQUE_NAME, REGISTER_CALL) \
     static auto UNIQUE_NAME = []() -> auto& { \
