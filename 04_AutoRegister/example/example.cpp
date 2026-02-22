@@ -54,6 +54,25 @@ public:
     }
 };
 
+class ComplexService {
+public:
+    std::string connection_string;
+    std::shared_ptr<Config> config;
+    std::shared_ptr<Logger> logger;
+    bool connected = false;
+    
+    void connect() {
+        connection_string = "mysql://" + config->db_host + ":" + std::to_string(config->db_port);
+        connected = true;
+        logger->log("Connected to: " + connection_string);
+    }
+    
+    void disconnect() {
+        connected = false;
+        logger->log("Disconnected");
+    }
+};
+
 // API 服务
 class ApiService {
 public:
@@ -73,7 +92,7 @@ public:
 };
 
 // ==================== 外部依赖（将在 lambda 中捕获） ====================
- #if 0
+ #if 1
  AUTO_REGISTER_LAMBDA_CREATOR(DatabaseService,
         ([]() {
             auto db = std::make_shared<DatabaseService>();
@@ -121,7 +140,7 @@ int main() {
 	    })
     );
     
-    #if 1
+  
     // 方式2：带初始化的 Lambda 注册
     std::cout << "\n[方式2] 带初始化的 Lambda 注册:" << std::endl;
     AUTO_REGISTER_LAMBDA_CREATOR_WITH_INIT(ApiService,
@@ -137,10 +156,11 @@ int main() {
             api.start();
         }
     );
-    
+     
+   #if 0
     // 方式3：条件创建 Lambda 注册
     std::cout << "\n[方式3] 条件创建 Lambda 注册:" << std::endl;
-    AUTO_REGISTER_LAMBDA_CREATOR(FeatureXService,
+    AUTO_REGISTER_LAMBDA_CREATOR(int,
         [enabled = g_enable_feature_x]() -> std::shared_ptr<void> {
             if (!enabled) {
                 std::cout << "[FeatureX] Feature disabled, returning null" << std::endl;
@@ -151,7 +171,9 @@ int main() {
             return std::make_shared<int>(42);  // 示例
         }
     );
+    #endif
     
+     #if 1
     // 方式4：复杂创建逻辑的 Lambda 注册
     std::cout << "\n[方式4] 复杂创建逻辑 Lambda 注册:" << std::endl;
     AUTO_REGISTER_LAMBDA_CREATOR(ComplexService,
@@ -159,7 +181,7 @@ int main() {
             std::cout << "[ComplexService] Starting complex initialization..." << std::endl;
             
             // 创建多个子组件
-            auto service = std::make_shared<DatabaseService>();
+            auto service = std::make_shared<ComplexService>();
             service->config = config;
             service->logger = logger;
             
@@ -196,8 +218,7 @@ int main() {
     #endif
     // 打印注册状态
     std::cout << "\n--- 注册状态 ---" << std::endl;
-    AutoRegister::instance().printCreators();
-    AutoRegister::instance().printInitQueues();
+    AutoRegister::instance().printRegistry();
     
     // 3. 执行初始化
     std::cout << "\n--- 步骤3: 执行初始化 ---" << std::endl;

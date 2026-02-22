@@ -64,6 +64,7 @@ set(LDFLAGS "")
 set(COMMON_WARNINGS
     "-Wall" "-Wextra"
     "-Wno-unused-variable"
+    "-Wno-unused-but-set-variable"
     "-Wno-unused-parameter"
     "-Wno-pedantic"
     "-Wno-overloaded-virtual"

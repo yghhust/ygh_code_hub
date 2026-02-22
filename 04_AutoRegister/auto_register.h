@@ -11,8 +11,6 @@
 #include <utility>
 #include <sstream>
 
-class AutoRegister;
-
 class AutoRegister {
 private:
     AutoRegister() = default;
@@ -29,201 +27,159 @@ public:
 
 private:
     mutable std::mutex mutex_;
-    std::unordered_map<std::string, std::function<std::shared_ptr<void>()>> creators_;
+
+    // 统一的注册条目结构
+    struct RegistrationEntry {
+        std::function<std::shared_ptr<void>()> creator;
+        std::function<void()> initializer;
+        int priority = 5;
+    };
+
+    // 核心存储
+    std::unordered_map<std::string, RegistrationEntry> registry_;
     std::unordered_map<std::string, std::shared_ptr<void>> instances_;
-    std::unordered_map<int, std::vector<std::function<void()>>> init_queues_;
 
     std::string makeFullName(const std::string& class_name, const std::string& instance_name) {
         return class_name + "#" + instance_name;
     }
+   
+    template<typename T, typename CreatorFunc, typename InitFunc = std::nullptr_t>
+    void registerEntryImpl(const std::string& key,
+                       CreatorFunc&& creator,
+                       InitFunc&& init = nullptr,
+                       int priority = 5) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (registry_.count(key)) {
+            std::cerr << "[AutoRegister WARNING] Overwriting registration for '" << key << "'\n";
+        }
+        priority = std::clamp(priority, 0, 10);
 
-    void addToInitQueue(const std::string& class_name, int priority, std::function<void()> init_func) {
-        init_queues_[priority].push_back(std::move(init_func));
+        // 包装 creator 使其返回 shared_ptr<void>
+        auto voidCreator = [creator = std::forward<CreatorFunc>(creator)]() -> std::shared_ptr<void> {
+            return creator();
+        };
+
+        // 包装 initializer
+	auto initWrapper = [this, key, initFunc = std::forward<InitFunc>(init)]() {
+	    auto inst = lazyCreateInstanceImpl<T>(key);
+	    if constexpr (!std::is_same_v<std::decay_t<InitFunc>, std::nullptr_t>) {
+	       initFunc(*std::static_pointer_cast<T>(inst));
+	    }
+        };
+        
+        
+        registry_[key] = {std::move(voidCreator), std::move(initWrapper), priority};
+        std::cout << "[AutoRegister INFO] Registered '" << key << "' with priority " << priority << "\n";
     }
 
 public:
-    void registerCreator(const std::string& class_name,
-                        std::function<std::shared_ptr<void>()> creator_lambda,
-                        int priority = 5) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (creators_.count(class_name)) {
-            std::cerr << "[AutoRegister WARNING] Creator already exists for '" 
-                      << class_name << "', overwriting." << std::endl;
-        }
-        priority = std::clamp(priority, 0, 10);
-        creators_[class_name] = std::move(creator_lambda);
-        addToInitQueue(class_name, priority, [this, class_name]() {
-            lazyCreateInstance<void>(class_name);
-        });
-        std::cout << "[AutoRegister INFO] Lambda creator registered for '" 
-                  << class_name << "' with priority " << priority << std::endl;
+    
+    /**
+    * @brief 统一注册入口（无初始化函数版本）
+    */
+    template<typename T, typename CreatorFunc>
+    void registerEntry(const std::string& key, CreatorFunc&& creator, int priority = 5) {
+        registerEntryImpl<T>(key, creator, nullptr, priority);
     }
 
+    /**
+     * @brief 统一注册入口（带初始化函数版本）
+     */
+    template<typename T, typename CreatorFunc, typename InitFunc>
+    void registerEntryWithInit(const std::string& key,
+                                CreatorFunc&& creator,
+                                InitFunc&& init,
+                                int priority = 5) {
+                                
+       registerEntryImpl<T>(key, creator, init, priority);                         
+    }
+
+    // ==================== 对外提供的便捷注册函数 ====================
+
+    // 1. 基础 Lambda 创建器
+    template<typename T>
+    void registerCreator(const std::string& class_name,
+                        std::function<std::shared_ptr<T>()> creator_lambda,
+                        int priority = 5) {
+        registerEntry<T>(class_name, std::move(creator_lambda), priority);
+    }
+
+    // 2. 带初始化的 Lambda 创建器
     template<typename T>
     void registerCreatorWithInit(const std::string& class_name,
                                  std::function<std::shared_ptr<T>()> creator_lambda,
                                  std::function<void(T&)> init_lambda,
                                  int priority = 5) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (creators_.count(class_name)) {
-            std::cerr << "[AutoRegister WARNING] Creator already exists for '" 
-                      << class_name << "', overwriting." << std::endl;
-        }
-        priority = std::clamp(priority, 0, 10);
-        creators_[class_name] = [class_name, creator_lambda, init_lambda]() -> std::shared_ptr<void> {
-            try {
-                auto instance = creator_lambda();
-                if (instance) init_lambda(*instance);
-                return instance;
-            } catch (const std::exception& e) {
-                std::cerr << "[AutoRegister ERROR] Creator with init failed for '" 
-                          << class_name << "': " << e.what() << std::endl;
-                return nullptr;
-            }
-        };
-        addToInitQueue(class_name, priority, [this, class_name]() {
-            lazyCreateInstance<T>(class_name);
-        });
-        std::cout << "[AutoRegister INFO] Lambda creator with init registered for '" 
-                  << class_name << "' with priority " << priority << std::endl;
+        registerEntryWithInit<T>(class_name,
+                                 std::move(creator_lambda),
+                                 std::move(init_lambda),
+                                 priority);
     }
 
+    // 3. 命名实例注册
+    template<typename T>
     void registerNamedCreator(const std::string& class_name,
                              const std::string& instance_name,
-                             std::function<std::shared_ptr<void>()> creator_lambda,
+                             std::function<std::shared_ptr<T>()> creator_lambda,
                              int priority = 5) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::string full_name = makeFullName(class_name, instance_name);
-        if (creators_.count(full_name)) {
-            std::cerr << "[AutoRegister WARNING] Named creator already exists for '" 
-                      << full_name << "', overwriting." << std::endl;
-        }
-        priority = std::clamp(priority, 0, 10);
-        creators_[full_name] = std::move(creator_lambda);
-        addToInitQueue(full_name, priority, [this, full_name, instance_name]() {
-            lazyCreateNamedInstance<void>(full_name, instance_name);
-        });
-        std::cout << "[AutoRegister INFO] Lambda named creator registered for '" 
-                  << full_name << "' with priority " << priority << std::endl;
+        registerEntry<T>(makeFullName(class_name, instance_name), std::move(creator_lambda), priority);
     }
 
+    // 4. 带初始化的命名实例注册
     template<typename T>
     void registerNamedCreatorWithInit(const std::string& class_name,
                                       const std::string& instance_name,
                                       std::function<std::shared_ptr<T>()> creator_lambda,
                                       std::function<void(T&)> init_lambda,
                                       int priority = 5) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::string full_name = makeFullName(class_name, instance_name);
-        if (creators_.count(full_name)) {
-            std::cerr << "[AutoRegister WARNING] Named creator already exists for '" 
-                      << full_name << "', overwriting." << std::endl;
-        }
-        priority = std::clamp(priority, 0, 10);
-        creators_[full_name] = [full_name, creator_lambda, init_lambda]() -> std::shared_ptr<void> {
-            try {
-                auto instance = creator_lambda();
-                if (instance) init_lambda(*instance);
-                return instance;
-            } catch (const std::exception& e) {
-                std::cerr << "[AutoRegister ERROR] Named creator with init failed for '" 
-                          << full_name << "': " << e.what() << std::endl;
-                return nullptr;
-            }
-        };
-        addToInitQueue(full_name, priority, [this, full_name, instance_name]() {
-            lazyCreateNamedInstance<T>(full_name, instance_name);
-        });
-        std::cout << "[AutoRegister INFO] Lambda named creator with init registered for '" 
-                  << full_name << "' with priority " << priority << std::endl;
+        registerEntryWithInit<T>(makeFullName(class_name, instance_name),
+                                 std::move(creator_lambda),
+                                 std::move(init_lambda),
+                                 priority);
     }
 
+    // 5. 类自动注册 (无参构造)
     template<typename T>
     void registerClass(const std::string& class_name, int priority = 5) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (creators_.count(class_name)) return;
-        priority = std::clamp(priority, 0, 10);
-        creators_[class_name] = [class_name]() -> std::shared_ptr<void> {
-            try { return std::make_shared<T>(); }
-            catch (const std::exception& e) {
-                std::cerr << "[AutoRegister ERROR] Creator failed for " << class_name 
-                          << ": " << e.what() << std::endl;
-                return nullptr;
-            }
-        };
-        addToInitQueue(class_name, priority, [this, class_name]() {
-            lazyCreateInstance<T>(class_name);
-        });
+        registerEntry<T>(class_name,
+                      []() { return std::make_shared<T>(); },
+                      priority);
     }
 
+    // 6. 类自动注册 (带初始化函数)
     template<typename T>
-    void registerClassWithInit(const std::string& class_name, 
-                               std::function<void(T&)> init_func = nullptr,
+    void registerClassWithInit(const std::string& class_name,
+                               std::function<void(T&)> init_func,
                                int priority = 5) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (creators_.count(class_name)) return;
-        priority = std::clamp(priority, 0, 10);
-        creators_[class_name] = [class_name, init_func]() -> std::shared_ptr<void> {
-            try {
-                auto instance = std::make_shared<T>();
-                if (init_func) init_func(*instance);
-                return instance;
-            } catch (const std::exception& e) {
-                std::cerr << "[AutoRegister ERROR] Creator with init failed for " << class_name 
-                          << ": " << e.what() << std::endl;
-                return nullptr;
-            }
-        };
-        addToInitQueue(class_name, priority, [this, class_name, init_func]() {
-            lazyCreateInstanceWithInit<T>(class_name, init_func);
-        });
+        registerEntryWithInit<T>(class_name,
+                                 []() { return std::make_shared<T>(); },
+                                 std::move(init_func),
+                                 priority);
     }
 
+    // 7. 命名类实例自动注册
     template<typename T>
-    void registerNamedInstance(const std::string& instance_name, 
-                              const std::string& class_name, 
+    void registerNamedInstance(const std::string& instance_name,
+                              const std::string& class_name,
                               int priority = 5) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::string full_name = makeFullName(class_name, instance_name);
-        if (creators_.count(full_name)) return;
-        priority = std::clamp(priority, 0, 10);
-        creators_[full_name] = [full_name, instance_name]() -> std::shared_ptr<void> {
-            try { return std::make_shared<T>(); }
-            catch (const std::exception& e) {
-                std::cerr << "[AutoRegister ERROR] Creator failed for named instance " << full_name 
-                          << ": " << e.what() << std::endl;
-                return nullptr;
-            }
-        };
-        addToInitQueue(full_name, priority, [this, full_name, instance_name]() {
-            lazyCreateNamedInstance<T>(full_name, instance_name);
-        });
+        registerEntry<T>(makeFullName(class_name, instance_name),
+                      []() { return std::make_shared<T>(); },
+                      priority);
     }
 
+    // 8. 命名类实例自动注册 (带初始化)
     template<typename T>
-    void registerNamedInstanceWithInit(const std::string& instance_name, 
+    void registerNamedInstanceWithInit(const std::string& instance_name,
                                        const std::string& class_name,
-                                       std::function<void(T&)> init_func = nullptr,
+                                       std::function<void(T&)> init_func,
                                        int priority = 5) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::string full_name = makeFullName(class_name, instance_name);
-        if (creators_.count(full_name)) return;
-        priority = std::clamp(priority, 0, 10);
-        creators_[full_name] = [full_name, instance_name, init_func]() -> std::shared_ptr<void> {
-            try {
-                auto instance = std::make_shared<T>();
-                if (init_func) init_func(*instance);
-                return instance;
-            } catch (const std::exception& e) {
-                std::cerr << "[AutoRegister ERROR] Creator with init failed for named instance " << full_name 
-                          << ": " << e.what() << std::endl;
-                return nullptr;
-            }
-        };
-        addToInitQueue(full_name, priority, [this, full_name, instance_name, init_func]() {
-            lazyCreateNamedInstanceWithInit<T>(full_name, instance_name, init_func);
-        });
+        registerEntryWithInit<T>(makeFullName(class_name, instance_name),
+                                 []() { return std::make_shared<T>(); },
+                                 std::move(init_func),
+                                 priority);
     }
+
+    // ==================== 初始化执行 ====================
 
     void executeAllInits() {
         executePriorInits(10);
@@ -232,11 +188,11 @@ public:
     void executePriorInits(int max_priority = 10) {
         max_priority = std::clamp(max_priority, 0, 10);
         auto inits = collectInitsUpToPriority(max_priority);
-        executeAllCollectedInits(std::move(inits), 
+        executeAllCollectedInits(std::move(inits),
             "[AutoRegister::Init] Starting execution of initializers with priority 0-" + std::to_string(max_priority) + "...");
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            std::cout << "[AutoRegister::Init] Priority 0-" << max_priority << " initializers executed. Total instances: " 
+            std::cout << "[AutoRegister::Init] Priority 0-" << max_priority << " initializers executed. Total instances: "
                       << instances_.size() << std::endl;
         }
     }
@@ -244,9 +200,11 @@ public:
     void executeInitsAtPriority(int priority) {
         priority = std::clamp(priority, 0, 10);
         auto inits = collectInitsAtPriority(priority);
-        executeAllCollectedInits(std::move(inits), 
+        executeAllCollectedInits(std::move(inits),
             "[AutoRegister::Init] Executing priority " + std::to_string(priority) + " initializers");
     }
+
+    // ==================== 实例获取 ====================
 
     template<typename T>
     std::shared_ptr<T> getInstance(const std::string& class_name) {
@@ -255,19 +213,19 @@ public:
         if (it != instances_.end()) {
             return std::static_pointer_cast<T>(it->second);
         }
-        return lazyCreateInstance<T>(class_name);
+        return lazyCreateInstanceImpl<T>(class_name);
     }
 
     template<typename T>
-    std::shared_ptr<T> getInstanceByName(const std::string& instance_name, 
-                                        const std::string& class_name) {
+    std::shared_ptr<T> getInstanceByName(const std::string& class_name,
+                                       const std::string& instance_name) {
         std::lock_guard<std::mutex> lock(mutex_);
         std::string full_name = makeFullName(class_name, instance_name);
         auto it = instances_.find(full_name);
         if (it != instances_.end()) {
             return std::static_pointer_cast<T>(it->second);
         }
-        return lazyCreateNamedInstance<T>(full_name, instance_name);
+        return lazyCreateInstanceImpl<T>(full_name);
     }
 
     template<typename T>
@@ -277,8 +235,8 @@ public:
     }
 
     template<typename T>
-    bool hasNamedInstance(const std::string& instance_name, 
-                         const std::string& class_name) {
+    bool hasNamedInstance(const std::string& class_name,
+                         const std::string& instance_name) {
         std::lock_guard<std::mutex> lock(mutex_);
         std::string full_name = makeFullName(class_name, instance_name);
         return instances_.find(full_name) != instances_.end();
@@ -288,6 +246,8 @@ public:
     std::shared_ptr<T> createTempInstance() {
         return std::make_shared<T>();
     }
+
+    // ==================== 调试与工具 ====================
 
     void printInstances() const {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -302,23 +262,11 @@ public:
         std::cout << std::endl;
     }
 
-    void printInitQueues() const {
+    void printRegistry() const {
         std::lock_guard<std::mutex> lock(mutex_);
-        std::cout << "\n[AutoRegister::Debug] Init queues status:" << std::endl;
-        for (int priority = 0; priority <= 10; ++priority) {
-            auto it = init_queues_.find(priority);
-            if (it != init_queues_.end() && !it->second.empty()) {
-                std::cout << "  Priority " << priority << ": " << it->second.size() << " items" << std::endl;
-            }
-        }
-        std::cout << std::endl;
-    }
-
-    void printCreators() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::cout << "\n[AutoRegister::Debug] Creators registered (" << creators_.size() << "):" << std::endl;
-        for (const auto& pair : creators_) {
-            std::cout << "  - Key: " << pair.first << std::endl;
+        std::cout << "\n[AutoRegister::Debug] Registry entries (" << registry_.size() << "):" << std::endl;
+        for (const auto& pair : registry_) {
+            std::cout << "  - Key: " << pair.first << ", Priority: " << pair.second.priority << std::endl;
         }
         std::cout << std::endl;
     }
@@ -326,174 +274,84 @@ public:
     void clear() {
         std::lock_guard<std::mutex> lock(mutex_);
         instances_.clear();
-        creators_.clear();
-        init_queues_.clear();
+        registry_.clear();
     }
 
-    size_t getInstanceCount() const { 
+    size_t getInstanceCount() const {
         std::lock_guard<std::mutex> lock(mutex_);
-        return instances_.size(); 
+        return instances_.size();
     }
-    
-    size_t getRegisteredCount() const { 
+
+    size_t getRegisteredCount() const {
         std::lock_guard<std::mutex> lock(mutex_);
-        return creators_.size(); 
+        return registry_.size();
     }
+
+    // ==================== 内部实现 ====================
 
     template<typename T>
     std::shared_ptr<T> forceInit(const std::string& class_name) {
-        return lazyCreateInstance<T>(class_name);
+        return lazyCreateInstanceImpl<T>(class_name);
     }
 
     template<typename T>
-    std::shared_ptr<T> forceInitNamed(const std::string& instance_name,
-                                       const std::string& class_name) {
+    std::shared_ptr<T> forceInitNamed(const std::string& class_name,
+                                      const std::string& instance_name) {
         std::string full_name = makeFullName(class_name, instance_name);
-        return lazyCreateNamedInstance<T>(full_name, instance_name);
+        return lazyCreateInstanceImpl<T>(full_name);
     }
 
+    // 核心惰性创建实现（带类型参数）
     template<typename T>
-    std::shared_ptr<T> lazyCreateInstance(const std::string& class_name) {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            auto it = instances_.find(class_name);
-            if (it != instances_.end()) {
-                return std::static_pointer_cast<T>(it->second);
-            }
+    std::shared_ptr<T> lazyCreateInstanceImpl(const std::string& key) {
+        auto it = instances_.find(key);
+        if (it != instances_.end()) {
+            return std::static_pointer_cast<T>(it->second);
         }
-        std::shared_ptr<void> instance;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            auto it = creators_.find(class_name);
-            if (it == creators_.end()) {
-                std::cerr << "[AutoRegister ERROR] No creator found for " << class_name << std::endl;
-                return nullptr;
-            }
-            try { instance = it->second(); }
-            catch (const std::exception& e) {
-                std::cerr << "[AutoRegister ERROR] Failed to create instance " << class_name << ": " << e.what() << std::endl;
-                return nullptr;
-            }
+        auto regIt = registry_.find(key);
+        if (regIt == registry_.end()) {
+            std::cerr << "[AutoRegister ERROR] No registration for '" << key << "'\n";
+            return nullptr;
         }
-        if (instance) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            instances_[class_name] = instance;
-        }
-        return std::static_pointer_cast<T>(instance);
-    }
-
-    template<typename T>
-    std::shared_ptr<T> lazyCreateInstanceWithInit(const std::string& class_name, 
-                                                     std::function<void(T&)> init_func) {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            auto it = instances_.find(class_name);
-            if (it != instances_.end()) {
-                return std::static_pointer_cast<T>(it->second);
+        try {
+            auto inst = regIt->second.creator();
+            if (inst) {
+                instances_[key] = inst;
             }
+            return std::static_pointer_cast<T>(inst);
+        } catch (const std::exception& e) {
+            std::cerr << "[AutoRegister ERROR] Create failed for '" << key << "': " << e.what() << "\n";
+            return nullptr;
         }
-        std::shared_ptr<void> instance;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            auto it = creators_.find(class_name);
-            if (it == creators_.end()) {
-                std::cerr << "[AutoRegister ERROR] No creator found for " << class_name << std::endl;
-                return nullptr;
-            }
-            try { instance = it->second(); }
-            catch (const std::exception& e) {
-                std::cerr << "[AutoRegister ERROR] Failed to create instance " << class_name << ": " << e.what() << std::endl;
-                return nullptr;
-            }
-        }
-        if (instance) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            instances_[class_name] = instance;
-        }
-        return std::static_pointer_cast<T>(instance);
-    }
-
-    template<typename T>
-    std::shared_ptr<T> lazyCreateNamedInstance(const std::string& full_name, 
-                                                 const std::string& instance_name) {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            auto it = instances_.find(full_name);
-            if (it != instances_.end()) {
-                return std::static_pointer_cast<T>(it->second);
-            }
-        }
-        std::shared_ptr<void> instance;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            auto it = creators_.find(full_name);
-            if (it == creators_.end()) {
-                std::cerr << "[AutoRegister ERROR] No creator found for " << full_name << std::endl;
-                return nullptr;
-            }
-            try { instance = it->second(); }
-            catch (const std::exception& e) {
-                std::cerr << "[AutoRegister ERROR] Failed to create named instance " << full_name << ": " << e.what() << std::endl;
-                return nullptr;
-            }
-        }
-        if (instance) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            instances_[full_name] = instance;
-        }
-        return std::static_pointer_cast<T>(instance);
-    }
-
-    template<typename T>
-    std::shared_ptr<T> lazyCreateNamedInstanceWithInit(const std::string& full_name, 
-                                                          const std::string& instance_name,
-                                                          std::function<void(T&)> init_func) {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            auto it = instances_.find(full_name);
-            if (it != instances_.end()) {
-                return std::static_pointer_cast<T>(it->second);
-            }
-        }
-        std::shared_ptr<void> instance;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            auto it = creators_.find(full_name);
-            if (it == creators_.end()) {
-                std::cerr << "[AutoRegister ERROR] No creator found for " << full_name << std::endl;
-                return nullptr;
-            }
-            try { instance = it->second(); }
-            catch (const std::exception& e) {
-                std::cerr << "[AutoRegister ERROR] Failed to create named instance " << full_name << ": " << e.what() << std::endl;
-                return nullptr;
-            }
-        }
-        if (instance) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            instances_[full_name] = instance;
-        }
-        return std::static_pointer_cast<T>(instance);
     }
 
     std::vector<std::function<void()>> collectInitsUpToPriority(int max_priority) {
         std::lock_guard<std::mutex> lock(mutex_);
-        std::vector<std::function<void()>> all_inits;
-        for (int priority = 0; priority <= max_priority; ++priority) {
-            auto it = init_queues_.find(priority);
-            if (it != init_queues_.end()) {
-                all_inits.insert(all_inits.end(), it->second.begin(), it->second.end());
+        std::vector<std::pair<int, std::function<void()>>> sorted_inits;
+        for (const auto& [key, entry] : registry_) {
+            if (entry.initializer) {
+                sorted_inits.emplace_back(entry.priority, entry.initializer);
             }
         }
-        return all_inits;
+        std::sort(sorted_inits.begin(), sorted_inits.end(),
+                  [](const auto& a, const auto& b) { return a.first < b.first; });
+
+        std::vector<std::function<void()>> result;
+        for (const auto& [pri, func] : sorted_inits) {
+            if (pri <= max_priority) {
+                result.push_back(func);
+            }
+        }
+        return result;
     }
 
     std::vector<std::function<void()>> collectInitsAtPriority(int priority) {
         std::lock_guard<std::mutex> lock(mutex_);
         std::vector<std::function<void()>> inits;
-        auto it = init_queues_.find(priority);
-        if (it != init_queues_.end()) {
-            inits = it->second;
+        for (const auto& [key, entry] : registry_) {
+             if (entry.priority == priority && entry.initializer) {
+                 inits.push_back(entry.initializer);
+             }
         }
         return inits;
     }
@@ -512,72 +370,6 @@ public:
     }
 };
 
-inline void registerCreator(const std::string& class_name,
-                           std::function<std::shared_ptr<void>()> creator_lambda,
-                           int priority = 5) {
-    AutoRegister::instance().registerCreator(class_name, std::move(creator_lambda), priority);
-}
-
-template<typename T>
-void registerCreator(const std::string& class_name,
-                    std::function<std::shared_ptr<T>()> creator_lambda,
-                    int priority = 5) {
-    AutoRegister::instance().registerCreatorWithInit<T>(
-        class_name,
-        std::move(creator_lambda),
-        [](T&) {}
-    );
-}
-
-template<typename T>
-void registerCreatorWithInit(const std::string& class_name,
-                             std::function<std::shared_ptr<T>()> creator_lambda,
-                             std::function<void(T&)> init_lambda,
-                             int priority = 5) {
-    AutoRegister::instance().registerCreatorWithInit<T>(
-        class_name,
-        std::move(creator_lambda),
-        std::move(init_lambda),
-        priority
-    );
-}
-
-inline void registerNamedCreator(const std::string& class_name,
-                                  const std::string& instance_name,
-                                  std::function<std::shared_ptr<void>()> creator_lambda,
-                                  int priority = 5) {
-    AutoRegister::instance().registerNamedCreator(
-        class_name, instance_name, std::move(creator_lambda), priority
-    );
-}
-
-template<typename T>
-void registerNamedCreator(const std::string& class_name,
-                          const std::string& instance_name,
-                          std::function<std::shared_ptr<T>()> creator_lambda,
-                          int priority = 5) {
-    AutoRegister::instance().registerNamedCreatorWithInit<T>(
-        class_name, instance_name,
-        std::move(creator_lambda),
-        [](T&) {},
-        priority
-    );
-}
-
-template<typename T>
-void registerNamedCreatorWithInit(const std::string& class_name,
-                                   const std::string& instance_name,
-                                   std::function<std::shared_ptr<T>()> creator_lambda,
-                                   std::function<void(T&)> init_lambda,
-                                   int priority = 5) {
-    AutoRegister::instance().registerNamedCreatorWithInit<T>(
-        class_name, instance_name,
-        std::move(creator_lambda),
-        std::move(init_lambda),
-        priority
-    );
-}
-
 // ==================== 统一宏实现 ====================
 
 #define _AUTO_REGISTER_IMPL(UNIQUE_NAME, REGISTER_CALL) \
@@ -591,25 +383,13 @@ void registerNamedCreatorWithInit(const std::string& class_name,
         return instance; \
     }()
 
-#define _AUTO_REGISTER_LAMBDA_IMPL(UNIQUE_NAME, REGISTER_CALL) \
-    static auto UNIQUE_NAME = []() -> auto& { \
-        struct Helper { \
-            Helper() { \
-                REGISTER_CALL; \
-            } \
-        }; \
-        static Helper instance; \
-        return instance; \
-    }()
-
-// 原有宏统一用 _AUTO_REGISTER_IMPL
 #define AUTO_REGISTER_CLASS(CLASS_NAME) \
     AUTO_REGISTER_CLASS_PRIORITY(CLASS_NAME, 5)
 
 #define AUTO_REGISTER_CLASS_PRIORITY(CLASS_NAME, PRIORITY) \
     _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_AutoRegister, \
-        ::registerClass<CLASS_NAME>(typeid(CLASS_NAME).name(), PRIORITY) \
+        ::AutoRegister::instance().registerClass<CLASS_NAME>(#CLASS_NAME, PRIORITY) \
     )
 
 #define AUTO_REGISTER_CLASS_WITH_INIT(CLASS_NAME, INIT_MEMBER_FUNC) \
@@ -618,8 +398,8 @@ void registerNamedCreatorWithInit(const std::string& class_name,
 #define AUTO_REGISTER_CLASS_WITH_INIT_PRIORITY(CLASS_NAME, INIT_MEMBER_FUNC, PRIORITY) \
     _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_AutoRegister, \
-        ::registerClassWithInit<CLASS_NAME>( \
-            typeid(CLASS_NAME).name(), [](CLASS_NAME& obj) { obj.INIT_MEMBER_FUNC(); }, PRIORITY) \
+        ::AutoRegister::instance().registerClassWithInit<CLASS_NAME>( \
+            #CLASS_NAME, [](CLASS_NAME& obj) { obj.INIT_MEMBER_FUNC(); }, PRIORITY) \
     )
 
 #define AUTO_REGISTER_CLASS_WITH_LAMBDA(CLASS_NAME, LAMBDA_INIT) \
@@ -628,14 +408,14 @@ void registerNamedCreatorWithInit(const std::string& class_name,
 #define AUTO_REGISTER_CLASS_WITH_LAMBDA_PRIORITY(CLASS_NAME, LAMBDA_INIT, PRIORITY) \
     _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_AutoRegister, \
-        ::registerClassWithInit<CLASS_NAME>( \
-            typeid(CLASS_NAME).name(), LAMBDA_INIT, PRIORITY) \
+        ::AutoRegister::instance().registerClassWithInit<CLASS_NAME>( \
+            #CLASS_NAME, LAMBDA_INIT, PRIORITY) \
     )
 
 #define AUTO_REGISTER_NAMED_INSTANCE(CLASS_NAME, INSTANCE_NAME) \
     _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_##INSTANCE_NAME##_AutoRegister, \
-        ::registerNamedInstance<CLASS_NAME>(INSTANCE_NAME) \
+        ::AutoRegister::instance().registerNamedInstance<CLASS_NAME>(INSTANCE_NAME, #CLASS_NAME) \
     )
 
 #define AUTO_REGISTER_NAMED_INSTANCE_WITH_INIT(CLASS_NAME, INSTANCE_NAME, INIT_MEMBER_FUNC) \
@@ -644,8 +424,8 @@ void registerNamedCreatorWithInit(const std::string& class_name,
 #define AUTO_REGISTER_NAMED_INSTANCE_WITH_INIT_PRIORITY(CLASS_NAME, INSTANCE_NAME, INIT_MEMBER_FUNC, PRIORITY) \
     _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_##INSTANCE_NAME##_AutoRegister, \
-        ::registerNamedInstanceWithInit<CLASS_NAME>(INSTANCE_NAME, \
-            typeid(CLASS_NAME).name(), [](CLASS_NAME& obj) { obj.INIT_MEMBER_FUNC(); }, PRIORITY) \
+        ::AutoRegister::instance().registerNamedInstanceWithInit<CLASS_NAME>(INSTANCE_NAME, \
+            #CLASS_NAME, [](CLASS_NAME& obj) { obj.INIT_MEMBER_FUNC(); }, PRIORITY) \
     )
 
 #define AUTO_REGISTER_NAMED_INSTANCE_WITH_LAMBDA(CLASS_NAME, INSTANCE_NAME, LAMBDA_INIT) \
@@ -654,32 +434,31 @@ void registerNamedCreatorWithInit(const std::string& class_name,
 #define AUTO_REGISTER_NAMED_INSTANCE_WITH_LAMBDA_PRIORITY(CLASS_NAME, INSTANCE_NAME, LAMBDA_INIT, PRIORITY) \
     _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_##INSTANCE_NAME##_AutoRegister, \
-        ::registerNamedInstanceWithInit<CLASS_NAME>(INSTANCE_NAME, \
-            typeid(CLASS_NAME).name(), LAMBDA_INIT, PRIORITY) \
+        ::AutoRegister::instance().registerNamedInstanceWithInit<CLASS_NAME>(INSTANCE_NAME, \
+            #CLASS_NAME, LAMBDA_INIT, PRIORITY) \
     )
 
-// Lambda 定制注册宏用 _AUTO_REGISTER_LAMBDA_IMPL
 #define AUTO_REGISTER_LAMBDA_CREATOR(CLASS_NAME, CREATOR_LAMBDA) \
-    _AUTO_REGISTER_LAMBDA_IMPL( \
+    _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_LambdaAutoRegister, \
-        ::registerCreator(#CLASS_NAME, CREATOR_LAMBDA) \
+        ::AutoRegister::instance().registerCreator<CLASS_NAME>(#CLASS_NAME, CREATOR_LAMBDA) \
     )
 
 #define AUTO_REGISTER_LAMBDA_CREATOR_WITH_INIT(CLASS_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
-    _AUTO_REGISTER_LAMBDA_IMPL( \
+    _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_LambdaInitAutoRegister, \
-        ::registerCreatorWithInit<CLASS_NAME>(#CLASS_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
+        ::AutoRegister::instance().registerCreatorWithInit<CLASS_NAME>(#CLASS_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
     )
 
 #define AUTO_REGISTER_LAMBDA_NAMED_CREATOR(CLASS_NAME, INSTANCE_NAME, CREATOR_LAMBDA) \
-    _AUTO_REGISTER_LAMBDA_IMPL( \
+    _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_##INSTANCE_NAME##_LambdaAutoRegister, \
-        ::registerNamedCreator(#CLASS_NAME, #INSTANCE_NAME, CREATOR_LAMBDA) \
+        ::AutoRegister::instance().registerNamedCreator<CLASS_NAME>(#CLASS_NAME, #INSTANCE_NAME, CREATOR_LAMBDA) \
     )
 
 #define AUTO_REGISTER_LAMBDA_NAMED_CREATOR_WITH_INIT(CLASS_NAME, INSTANCE_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
-    _AUTO_REGISTER_LAMBDA_IMPL( \
+    _AUTO_REGISTER_IMPL( \
         CLASS_NAME##_##INSTANCE_NAME##_LambdaInitAutoRegister, \
-        ::registerNamedCreatorWithInit<CLASS_NAME>(#INSTANCE_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
+        ::AutoRegister::instance().registerNamedCreatorWithInit<CLASS_NAME>(#INSTANCE_NAME, CREATOR_LAMBDA, INIT_LAMBDA) \
     )
 
