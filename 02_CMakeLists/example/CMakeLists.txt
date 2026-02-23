@@ -35,7 +35,7 @@ project(MyApp)
 set(MY_PROJECT "MyApp")
 set(MY_BIN "a.out")
 
-# 源码根目录
+# 源码根目录(相对CMakeList.txt所在目录路径)
 set(SRC_DIR ".")
 
 # 要排除的目录（相对 SRC_DIR 的路径）
@@ -100,12 +100,12 @@ set(LIBS
 # ==================== 5. 获取源文件 ====================
 
 # 将 SRC_DIR 转换为绝对路径
-get_filename_component(SRC_DIR_ABS "${SRC_DIR}" ABSOLUTE)
+#get_filename_component(SRC_DIR_ABS "${SRC_DIR}" ABSOLUTE)
 
 # 递归获取所有源文件
 set(ALL_SOURCES "")
 foreach(ext IN LISTS SRC_EXTENSIONS)
-    file(GLOB_RECURSE files "${SRC_DIR_ABS}/${ext}")
+    file(GLOB_RECURSE files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${SRC_DIR}/${ext}")
     list(APPEND ALL_SOURCES ${files})
 endforeach()
 
@@ -125,28 +125,30 @@ list(REMOVE_DUPLICATES ALL_SOURCES)
 # ==================== 6. 获取头文件目录 ====================
 
 # 递归获取 SRC_DIR_ABS 下面的所有目录（包括子目录）
-file(GLOB_RECURSE ALL_DIRS LIST_DIRECTORIES true "${SRC_DIR_ABS}/*")
+file(GLOB_RECURSE ALL_DIRS LIST_DIRECTORIES true RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${SRC_DIR}/*")
 
 # 只保留真正的目录，并应用排除规则
 set(ALL_INCLUDES "")
 foreach(d IN LISTS ALL_DIRS)
-    if(IS_DIRECTORY "${d}")
-        # 计算相对于 SRC_DIR_ABS 的路径
-        file(RELATIVE_PATH rel_d "${SRC_DIR_ABS}" "${d}")
-        
-        # 检查是否在排除目录列表中
-        set(excluded FALSE)
-        foreach(excl_dir IN LISTS EXCLUDE_DIRS)
-            if("${rel_d}" MATCHES "^${excl_dir}(/.*)?$")
-                set(excluded TRUE)
-                break()
-            endif()
-        endforeach()
-        
-        if(NOT excluded)
-            list(APPEND ALL_INCLUDES "${d}")
-        endif()
-    endif()
+	if(NOT IS_DIRECTORY "${d}")
+		continue()
+	endif()
+
+	# 计算相对于 SRC_DIR_ABS 的路径
+	#file(RELATIVE_PATH rel_d "${SRC_DIR_ABS}" "${d}")
+	
+	# 检查是否在排除目录列表中
+	set(excluded FALSE)
+	foreach(excl_dir IN LISTS EXCLUDE_DIRS)
+			if("${d}" MATCHES "^${excl_dir}(/.*)?$")
+					set(excluded TRUE)
+					break()
+			endif()
+	endforeach()
+	
+	if(NOT excluded)
+			list(APPEND ALL_INCLUDES "${d}")
+	endif()
 endforeach()
 
 # 去重
@@ -176,7 +178,7 @@ message(STATUS "========================================")
 message(STATUS "Build Configuration:")
 message(STATUS "  Project: ${MY_PROJECT}")
 message(STATUS "  Binary:  ${MY_BIN}")
-message(STATUS "  Source Dir: ${SRC_DIR} (${SRC_DIR_ABS})")
+message(STATUS "  Source Dir: ${SRC_DIR}")
 message(STATUS "  Sources: ${ALL_SOURCES}")
 message(STATUS "  Include Dirs: ${ALL_INCLUDES}")
 message(STATUS "  Excluded Dirs: ${EXCLUDE_DIRS}")
