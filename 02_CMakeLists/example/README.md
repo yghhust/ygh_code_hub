@@ -19,7 +19,7 @@ demo_project/
     └── ...
 ```
 
-##编译方法
+## 编译方法
 ```
 mkdir build
 cd build
