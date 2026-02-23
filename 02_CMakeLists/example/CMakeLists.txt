@@ -123,7 +123,7 @@ list(REMOVE_DUPLICATES ALL_SOURCES)
 
 # ==================== 6. 获取头文件目录 ====================
 
-# 递归获取 SRC_DIR_ABS 下面的所有目录（包括子目录）
+# 递归获取 SRC_DIR下面的所有目录（包括子目录）
 file(GLOB_RECURSE ALL_DIRS LIST_DIRECTORIES true RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${SRC_DIR}/*")
 
 # 只保留真正的目录，并应用排除规则
@@ -150,6 +150,9 @@ foreach(d IN LISTS ALL_DIRS)
 	    list(APPEND ALL_INCLUDES "${d}")
 	endif()
 endforeach()
+
+# 追加自身目录
+list(APPEND ALL_INCLUDES "${SRC_DIR}")
 
 # 去重
 list(REMOVE_DUPLICATES ALL_INCLUDES)
