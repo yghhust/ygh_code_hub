@@ -80,7 +80,7 @@ set(COMMON_WARNINGS
 set(CFLAGS "-std=c11")
 
 # C++ 编译器选项
-set(CXXFLAGS "-std=c++17")
+set(CXXFLAGS "-std=c++17" "-g")
 
 # 链接器选项
 set(LDFLAGS "")

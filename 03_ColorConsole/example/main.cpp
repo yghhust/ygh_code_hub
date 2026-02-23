@@ -2,13 +2,15 @@
 #include <iostream>
 
 int main() {
+    std::cout << "=== Testing Formatter ===" << std::endl;
+    
     // 基本使用
     std::cout << Formatter::format("Hello, {}!\n", "World");
 
     // 位置参数
     std::cout << Formatter::format("{1} + {0} = {2}\n", 2, 3, 5);
     
-		std::cout << Formatter::format("{} + {0} = {2}\n", 12, 13, 25);
+    std::cout << Formatter::format("{  } + {0} = {2}\n", 12, 13, 25);
 
     // 格式说明符
     std::cout << Formatter::format("Pi ≈ {:.2f}\n", 3.1415926);
