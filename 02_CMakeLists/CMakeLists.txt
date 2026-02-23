@@ -48,10 +48,8 @@ set(EXCLUDE_DIRS
 
 # 要排除的文件（相对 SRC_DIR 的路径，用分号分隔）
 set(EXCLUDE_FILES 
-    "module_a/old_code.cpp"
-    "module_b/experimental.cc"
-    #"CMakeCXXCompilerId.cpp"
-    #"CMakeCCompilerId.c"
+    "CMakeCXXCompilerId.cpp"
+    "CMakeCCompilerId.c"
 )
 
 # ==================== 2. 文件后缀配置 ====================
@@ -117,7 +115,7 @@ endforeach()
 
 # 排除指定目录下的所有文件
 foreach(excl_dir IN LISTS EXCLUDE_DIRS)
-    list(FILTER ALL_SOURCES EXCLUDE REGEX ".*/${excl_dir}/.*")
+    list(FILTER ALL_SOURCES EXCLUDE REGEX ".*${excl_dir}/.*")
 endforeach()
 
 # 去重
@@ -131,7 +129,8 @@ file(GLOB_RECURSE ALL_DIRS LIST_DIRECTORIES true RELATIVE "${CMAKE_CURRENT_SOURC
 # 只保留真正的目录，并应用排除规则
 set(ALL_INCLUDES "")
 foreach(d IN LISTS ALL_DIRS)
-	if(NOT IS_DIRECTORY "${d}")
+        # 注意需要使用绝对路径进行判断！
+	if(NOT IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${d}")
 	    continue()
 	endif()
 

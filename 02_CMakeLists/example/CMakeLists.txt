@@ -52,7 +52,6 @@ set(EXCLUDE_FILES
     "CMakeCCompilerId.c"
 )
 
-
 # ==================== 2. 文件后缀配置 ====================
 
 # 源文件后缀
@@ -116,7 +115,7 @@ endforeach()
 
 # 排除指定目录下的所有文件
 foreach(excl_dir IN LISTS EXCLUDE_DIRS)
-    list(FILTER ALL_SOURCES EXCLUDE REGEX ".*/${excl_dir}/.*")
+    list(FILTER ALL_SOURCES EXCLUDE REGEX ".*${excl_dir}/.*")
 endforeach()
 
 # 去重
@@ -130,8 +129,9 @@ file(GLOB_RECURSE ALL_DIRS LIST_DIRECTORIES true RELATIVE "${CMAKE_CURRENT_SOURC
 # 只保留真正的目录，并应用排除规则
 set(ALL_INCLUDES "")
 foreach(d IN LISTS ALL_DIRS)
-	if(NOT IS_DIRECTORY "${d}")
-		continue()
+        # 注意需要使用绝对路径进行判断！
+	if(NOT IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${d}")
+	    continue()
 	endif()
 
 	# 计算相对于 SRC_DIR_ABS 的路径
@@ -140,14 +140,14 @@ foreach(d IN LISTS ALL_DIRS)
 	# 检查是否在排除目录列表中
 	set(excluded FALSE)
 	foreach(excl_dir IN LISTS EXCLUDE_DIRS)
-			if("${d}" MATCHES "^${excl_dir}(/.*)?$")
-					set(excluded TRUE)
-					break()
-			endif()
+	    if("${d}" MATCHES "^${excl_dir}(/.*)?$")
+		set(excluded TRUE)
+		break()
+	    endif()
 	endforeach()
 	
 	if(NOT excluded)
-			list(APPEND ALL_INCLUDES "${d}")
+	    list(APPEND ALL_INCLUDES "${d}")
 	endif()
 endforeach()
 
