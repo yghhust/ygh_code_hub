@@ -35,24 +35,23 @@ project(MyApp)
 set(MY_PROJECT "MyApp")
 set(MY_BIN "a.out")
 
-# 源码根目录（改成你的路径，支持相对或绝对路径）
+# 源码根目录
 set(SRC_DIR ".")
 
-# 要排除的目录（相对 SRC_DIR 的路径，用分号分隔）
+# 要排除的目录（相对 SRC_DIR 的路径）
+# 注意：这里的路径是相对于 SRC_DIR 的，不包含开头的 "./"
 set(EXCLUDE_DIRS 
-    "build"
-    "module_a/legacy"
-    "module_b/test"
-    "utils/old_version"
+    "build"              # 排除 ./build 目录
+    "module_a/legacy"    # 排除 ./module_a/legacy 目录
+    "module_b/test"      # 排除 ./module_b/test 目录
 )
 
-# 要排除的文件（相对 SRC_DIR 的路径，用分号分隔）
+# 要排除的文件（相对 SRC_DIR 的路径）
 set(EXCLUDE_FILES 
-    "module_a/old_code.cpp"
-    "module_b/experimental.cc"
-    #"CMakeCXXCompilerId.cpp"
-    #"CMakeCCompilerId.c"
+    "CMakeCXXCompilerId.cpp"
+    "CMakeCCompilerId.c"
 )
+
 
 # ==================== 2. 文件后缀配置 ====================
 
