@@ -1,80 +1,273 @@
+/*
+ * @file        format_utils.h
+ * @brief       类 C++20 std::format 的字符串格式化工具
+ *
+ * @author      yuguohua <ghy_hust@qq.com>
+ * @date        2026-02-23
+ * @copyright Copyright (c) 2026
+ *
+ * @version     1.0
+ * @par Revision History:
+ * - V1.0 2026-02-23  yuguohua: initial
+ *
+ * @note
+ * 1. 支持空占位符 {}
+ * 2. 支持索引占位符 {0}, {1}, ...
+ * 3. 支持格式说明符 {:.2f}, {:08x}, {:<10} 等
+ * 4. 支持转义花括号 {{ 和 }}
+ */
+
 #ifndef FORMAT_UTILS_H
 #define FORMAT_UTILS_H
 
 #include <iostream>
 #include <sstream>
-/*-------------------------------------------------------------------------------------------------
-#@brief		格式化字符串
-#@details   将格式化字符串中的占位符 {} 按顺序替换为对应的参数值，生成最终的格式化字符串。
-			1)支持多个参数和混合类型参数，通过递归展开参数包实现。
-			2)当没有占位符或参数时，直接输出剩余格式字符串。
-			3)遇到不匹配的花括号时抛出异常。
-@param		fmt		入参-格式化字符串，使用 {} 作为占位符标记需要替换的参数位置
-			args	入参-可变参数列表，支持任意数量和类型的参数，将按顺序替换占位符
-@return		std::string 返回格式化后的完整字符串
-@throws		std::runtime_err当格式字符串中存在未匹配的花括号时抛出
-@example    1) 基本使用
-				Formatter::format("Hello, {}!", "World"); // 返回 "Hello, World!"
-			2) 多个参数
-			    Formatter::format("{} + {} = {}", 2, 3, 5); // 返回 "2 + 3 = 5"
-			3) 混合类型
-				Formatter::format("Name: {}, Age: {}, Score: {}", "Alice", 25, 95.5);// 返回 "Name: Alice, Age: 25, Score: 95.5"
-			4) 无参数
-				Formatter::format("Hello World!"); // 返回 "Hello World!"
-			5) 异常情况
-				Formatter::format("Unmatched {"); // 抛出 std::runtime_error
-@note		1) 占位符必须使用成对的花括号 {}，不支持带格式说明符的复杂格式（如 {:.2f}）
-			2) 参数数量应与占位符数量匹配，多余的参数会被忽略，不足的占位符会导致异常
-			3) 当前实现不支持位置参数（如 {0}, {1}）和命名参数
-			4) 对于字符串中的字面量花括号，需要使用双写转义（如 "{{" 表示一个字面量 "{")
-			5) 递归实现可能对大量参数有栈深度限制，实际使用中应评估参数数量
-			6) 线程安全性：当前实现使用局部 ostringstream 对象，是线程安全的
-			7) 性能考虑：每次调用都会创建新的 ostringstream，高频调用时建议考虑性能优化
-			8) 错误处理：捕获异常时会输出错误信息到 cerr，但仍返回已格式化的部分字符串
--------------------------------------------------------------------------------------------------*/
+#include <string>
+#include <stdexcept>
+#include <type_traits>
+#include <iomanip>
+#include <cctype>
+#include <utility>
+#include <variant>
+#include <vector>
+
 class Formatter {
 public:
-    // 主格式化函数
     template<typename... Args>
-    static std::string format(const std::string &fmt, const Args &... args) {
+    static std::string format(const std::string& fmt, const Args&... args) {
         std::ostringstream oss;
         try {
-            format_helper(oss, fmt, 0, args...);
-        } catch (const std::exception &e) {
-            std::cerr << "Expected error: " << e.what() << std::endl;
+            std::vector<Value> values = {Value(args)...};
+            size_t next_arg = 0;
+            format_impl(oss, fmt, 0, next_arg, values);
+        } catch (const std::exception& e) {
+            std::cerr << "[Formatter Error] " << e.what() << std::endl;
+            throw;
         }
         return oss.str();
     }
 
 private:
-    // 终止条件：无参数
-    static void format_helper(std::ostringstream &oss, const std::string &fmt, size_t idx) {
-        oss << fmt.substr(idx);
+    struct Value {
+        std::variant<
+            int, long, long long,
+            unsigned, unsigned long, unsigned long long,
+            float, double, long double,
+            char, bool,
+            std::string, const char*
+        > data;
+
+        template<typename T>
+        Value(const T& v) : data(v) {}
+
+        template<typename T>
+        static T get_int(const Value& v) {
+            return std::visit([](auto&& arg) -> T {
+                using ArgType = std::decay_t<decltype(arg)>;
+                if constexpr (std::is_integral_v<ArgType>) {
+                    return static_cast<T>(arg);
+                } else {
+                    throw std::runtime_error("Value is not an integer");
+                }
+            }, v.data);
+        }
+
+        template<typename T>
+        static T get_float(const Value& v) {
+            return std::visit([](auto&& arg) -> T {
+                using ArgType = std::decay_t<decltype(arg)>;
+                if constexpr (std::is_floating_point_v<ArgType>) {
+                    return static_cast<T>(arg);
+                } else {
+                    throw std::runtime_error("Value is not a floating point number");
+                }
+            }, v.data);
+        }
+
+        static std::string get_string(const Value& v) {
+            return std::visit([](auto&& arg) -> std::string {
+                using ArgType = std::decay_t<decltype(arg)>;
+                if constexpr (std::is_same_v<ArgType, std::string>) {
+                    return arg;
+                } else if constexpr (std::is_same_v<ArgType, const char*>) {
+                    return arg;
+                } else if constexpr (std::is_same_v<ArgType, char>) {
+                    return std::string(1, arg);
+                } else if constexpr (std::is_same_v<ArgType, bool>) {
+                    return arg ? "true" : "false";
+                } else {
+                    std::ostringstream oss;
+                    oss << arg;
+                    return oss.str();
+                }
+            }, v.data);
+        }
+    };
+
+    static void format_impl(std::ostringstream& oss, const std::string& fmt,
+                            size_t fmt_idx, size_t& next_arg,
+                            const std::vector<Value>& values) {
+        size_t i = fmt_idx;
+        while (i < fmt.size()) {
+            if (fmt[i] == '{') {
+                if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
+                    oss << '{';
+                    i += 2;
+                    continue;
+                }
+                size_t j = fmt.find('}', i + 1);
+                if (j == std::string::npos) {
+                    throw std::runtime_error("Unmatched '{' at position " + std::to_string(i));
+                }
+                std::string placeholder = fmt.substr(i + 1, j - i - 1);
+                process_placeholder(oss, placeholder, next_arg, values);
+                i = j + 1;
+            } else if (fmt[i] == '}') {
+                if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
+                    oss << '}';
+                    i += 2;
+                    continue;
+                }
+                throw std::runtime_error("Unmatched '}' at position " + std::to_string(i));
+            } else {
+                oss << fmt[i];
+                ++i;
+            }
+        }
     }
 
-    // 递归处理：有参数
-    template<typename T, typename... Rest>
-    static void format_helper(std::ostringstream &oss, const std::string &fmt,
-                              size_t idx, const T &first, const Rest &... rest) {
-        size_t pos = fmt.find('{', idx);
-        if (pos == std::string::npos) {
-            oss << fmt.substr(idx);
+    static void process_placeholder(std::ostringstream& oss, const std::string& ph,
+                                    size_t& next_arg,
+                                    const std::vector<Value>& values) {
+        if (ph.empty()) {
+            if (next_arg >= values.size()) {
+                throw std::runtime_error("Not enough arguments for format string. Missing argument for {}.");
+            }
+            oss << Value::get_string(values[next_arg]);
+            next_arg++;
             return;
         }
 
-        size_t end = fmt.find('}', pos);
-        if (end == std::string::npos) {
-            throw std::runtime_error("Unmatched brace in format string");
+        size_t colon_pos = ph.find(':');
+        std::string arg_spec = (colon_pos != std::string::npos) ? ph.substr(colon_pos + 1) : "";
+        std::string arg_key = (colon_pos != std::string::npos) ? ph.substr(0, colon_pos) : ph;
+
+        if (arg_key.empty()) {
+            if (next_arg >= values.size()) {
+                throw std::runtime_error("Not enough arguments for format string. Missing argument for {:...}.");
+            }
+            apply_with_format(oss, values[next_arg], arg_spec);
+            next_arg++;
+            return;
         }
 
-        // 输出格式字符串中 {} 之前的内容
-        oss << fmt.substr(idx, pos - idx);
+        if (std::isdigit(static_cast<unsigned char>(arg_key[0]))) {
+            int pos = std::stoi(arg_key);
+            if (pos < 0) {
+                throw std::runtime_error("Position argument cannot be negative: " + arg_key);
+            }
+            if (static_cast<size_t>(pos) >= values.size()) {
+                oss << '{' << arg_key;
+                if (!arg_spec.empty()) {
+                    oss << ':' << arg_spec;
+                }
+                oss << '}';
+                return;
+            }
+            apply_with_format(oss, values[pos], arg_spec);
+            return;
+        } else {
+            throw std::runtime_error("Named arguments are not supported. Use positional arguments like {}, {0}, {1}.");
+        }
+    }
 
-        // 处理当前参数
-        oss << first;
+    static void apply_with_format(std::ostringstream& oss, const Value& value, const std::string& spec) {
+        if (spec.empty()) {
+            oss << Value::get_string(value);
+            return;
+        }
 
-        // 递归处理剩余部分和参数
-        format_helper(oss, fmt, end + 1, rest...);
+        // 解析格式说明符
+        char fill = ' ';
+        char align = '\0';
+        int width = 0;
+        int precision = -1;  // -1 表示没有精度
+        char type = '\0';
+        bool zero_pad = false;
+
+        size_t i = 0;
+        
+        // 解析对齐方式和填充字符
+        if (i < spec.size() && spec[i] == '0') {
+            zero_pad = true;
+            ++i;
+        }
+        if (i < spec.size() && (spec[i] == '<' || spec[i] == '>' || spec[i] == '^')) {
+            align = spec[i];
+            ++i;
+        }
+        
+        // 解析宽度
+        while (i < spec.size() && std::isdigit(static_cast<unsigned char>(spec[i]))) {
+            width = width * 10 + (spec[i] - '0');
+            ++i;
+        }
+        
+        // 解析精度（.2 部分）
+        if (i < spec.size() && spec[i] == '.') {
+            ++i;
+            precision = 0;
+            while (i < spec.size() && std::isdigit(static_cast<unsigned char>(spec[i]))) {
+                precision = precision * 10 + (spec[i] - '0');
+                ++i;
+            }
+        }
+        
+        // 解析类型（f, x, d 等）
+        if (i < spec.size()) {
+            type = spec[i];
+        }
+
+        // 设置格式
+        if (zero_pad && !align) align = '>';
+        if (align == '<') oss << std::left;
+        else if (align == '>') oss << std::right;
+        else if (align == '^') oss << std::internal;
+
+        if (width > 0) oss << std::setw(width);
+        if (zero_pad) oss << std::setfill('0');
+        if (precision >= 0) oss << std::setprecision(precision);
+
+        // 根据类型输出
+        switch (type) {
+            case 'd':
+                oss << std::dec << Value::get_int<int>(value);
+                break;
+            case 'x':
+                oss << std::hex << std::nouppercase << Value::get_int<unsigned int>(value);
+                break;
+            case 'X':
+                oss << std::hex << std::uppercase << Value::get_int<unsigned int>(value);
+                break;
+            case 'o':
+                oss << std::oct << Value::get_int<unsigned int>(value);
+                break;
+            case 'f':
+                oss << std::fixed << Value::get_float<double>(value);
+                break;
+            case 'e':
+                oss << std::scientific << Value::get_float<double>(value);
+                break;
+            case 'g':
+                oss << std::defaultfloat << Value::get_float<double>(value);
+                break;
+            default:
+                oss << Value::get_string(value);
+                break;
+        }
+
+        oss << std::setfill(' ') << std::setw(0) << std::setprecision(6);
     }
 };
 
+#endif // FORMAT_UTILS_H
