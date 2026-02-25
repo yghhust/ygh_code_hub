@@ -7,12 +7,12 @@
 #include <iostream>
 #include <string>
 
-// --- 测试类定义 ---
+// --- 测试类 ---
 
 // 1. 基础类，无初始化
 class SimpleService {
 public:
-    std::string name = "SimpleService_Default";
+    std::string name = "SimpleService";
     void sayHello() {
         std::cout << "[SimpleService] Hello from " << name << std::endl;
     }
@@ -40,10 +40,7 @@ class LambdaInitializedService {
 public:
     double factor = 1.0;
     std::string mode = "off";
-    
-    void setup() {
-        std::cout << "[LambdaInitializedService] Setup complete. Factor: " << factor << ", Mode: " << mode << std::endl;
-    }
+    void setup() { std::cout << "[LambdaInitializedService] Factor: " << factor << ", Mode: " << mode << std::endl; }
 };
 
 // 4. 命名实例类
@@ -51,11 +48,7 @@ class DatabaseConnection {
 public:
     std::string connectionString;
     bool isConnected = false;
-    
-    void connect() {
-        isConnected = true;
-        std::cout << "[DatabaseConnection] Connected to: " << connectionString << std::endl;
-    }
+    void connect() { isConnected = true; std::cout << "[DatabaseConnection] Connected to: " << connectionString << std::endl; }
 };
 
 // 5. 使用创建器的类
@@ -69,9 +62,7 @@ public:
     }
 };
 
-
-// --- 使用宏进行注册 ---
-
+// --- 注册宏 ---
 // 1. 基础类自动注册
 AUTO_REGISTER_CLASS(SimpleService);
 
@@ -110,27 +101,28 @@ AUTO_REGISTER_CLASS_CREATOR_WITH_INITFUNC(ComplexObject, []() {
 AUTO_REGISTER_CLASS_CREATOR_WITH_INIT(ComplexObject, []() {
     return std::make_shared<ComplexObject>(300, "CreatorLambdaInit");
 }, [](ComplexObject& obj) {
-    obj.id += 1000; // Modify after creation
+    obj.id += 1000;
 });
 
 // 10. 命名实例的类创建器
 AUTO_REGISTER_CLASS_CREATOR_INSTANCE(ComplexObject, InstanceAlpha, []() {
-    return std::make_shared<ComplexObject>(400, "InstCreatorAlpha");
+    return std::make_shared<ComplexObject>(400, "InstAlpha");
 });
 
 // 11. 命名实例的类创建器带成员函数初始化
 AUTO_REGISTER_CLASS_CREATOR_INSTANCE_WITH_INITFUNC(ComplexObject, InstanceBeta, []() {
-    return std::make_shared<ComplexObject>(500, "InstCreatorBeta");
+    return std::make_shared<ComplexObject>(500, "InstBeta");
 }, describe);
 
 // 12. 命名实例的类创建器带 Lambda 初始化
 AUTO_REGISTER_CLASS_CREATOR_INSTANCE_WITH_INIT(ComplexObject, InstanceGamma, []() {
-    return std::make_shared<ComplexObject>(600, "InstCreatorGamma");
+    return std::make_shared<ComplexObject>(600, "InstGamma");
 }, [](ComplexObject& obj) {
-    obj.type = "ModifiedByLambda";
+    obj.type = "Modified";
 });
 
 // --- 主函数 ---
+
 int main() {
     std::cout << "========================================" << std::endl;
     std::cout << "   AutoRegister Framework Demo         " << std::endl;
@@ -148,55 +140,33 @@ int main() {
     // 获取并使用实例
     std::cout << "--- Getting and using instances ---" << std::endl;
 
-    // 1. SimpleService
-    auto simple = AutoRegister::instance().getInstance<SimpleService>("SimpleService");
+    auto simple = AutoRegister::instance().getInstance<SimpleService>();
     if (simple) simple->sayHello();
 
-    // 2. ConfiguredService (already initialized)
-    auto configured = AutoRegister::instance().getInstance<ConfiguredService>("ConfiguredService");
+    auto configured = AutoRegister::instance().getInstance<ConfiguredService>();
     if (configured) configured->show();
 
-    // 3. LambdaInitializedService (already initialized)
-    auto lambdaInit = AutoRegister::instance().getInstance<LambdaInitializedService>("LambdaInitializedService");
+    auto lambdaInit = AutoRegister::instance().getInstance<LambdaInitializedService>();
     if (lambdaInit) lambdaInit->setup();
 
-    // 4. Named DB Instances
-    auto primaryDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("DatabaseConnection", "PrimaryDB");
-    if (primaryDb) {
-        std::cout << "[Main] PrimaryDB created. Connecting now..." << std::endl;
-        primaryDb->connect();
-    }
+    auto primaryDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("PrimaryDB");
+    if (primaryDb) { std::cout << "[Main] PrimaryDB 创建，连接中..." << std::endl; primaryDb->connect(); }
 
-    auto secondaryDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("DatabaseConnection", "SecondaryDB");
-    if (secondaryDb) {
-        std::cout << "[Main] SecondaryDB state: " << (secondaryDb->isConnected ? "Connected" : "Disconnected") << std::endl;
-    }
+    auto secondaryDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("SecondaryDB");
+    if (secondaryDb) std::cout << "[Main] SecondaryDB 状态: " << (secondaryDb->isConnected ? "已连接" : "未连接") << std::endl;
 
-    auto replicaDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("DatabaseConnection", "ReadReplica");
-    if (replicaDb) {
-        std::cout << "[Main] ReplicaDB connected to: " << replicaDb->connectionString << std::endl;
-    }
+    auto replicaDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("ReadReplica");
+    if (replicaDb) std::cout << "[Main] ReplicaDB 连接至: " << replicaDb->connectionString << std::endl;
 
-    // 5. ComplexObjects from Creators
-    auto creatorObj = AutoRegister::instance().getInstance<ComplexObject>("ComplexObject");
-    if (creatorObj) creatorObj->describe();
-
-    auto creatorInitFuncObj = AutoRegister::instance().getInstance<ComplexObject>("ComplexObject");
-    if (creatorInitFuncObj) creatorInitFuncObj->describe();
-
-    auto creatorLambdaInitObj = AutoRegister::instance().getInstance<ComplexObject>("ComplexObject");
-    if (creatorLambdaInitObj) creatorLambdaInitObj->describe();
-
-    // 6. Named ComplexObject Instances from Creators
-    auto alpha = AutoRegister::instance().getInstanceByName<ComplexObject>("ComplexObject", "InstanceAlpha");
+    // 命名实例访问
+    auto alpha = AutoRegister::instance().getInstanceByName<ComplexObject>("InstanceAlpha");
     if (alpha) alpha->describe();
 
-    auto beta = AutoRegister::instance().getInstanceByName<ComplexObject>("ComplexObject", "InstanceBeta");
+    auto beta = AutoRegister::instance().getInstanceByName<ComplexObject>("InstanceBeta");
     if (beta) beta->describe();
 
-    auto gamma = AutoRegister::instance().getInstanceByName<ComplexObject>("ComplexObject", "InstanceGamma");
+    auto gamma = AutoRegister::instance().getInstanceByName<ComplexObject>("InstanceGamma");
     if (gamma) gamma->describe();
-
 
     std::cout << std::endl;
     std::cout << "--- Final Instance Count: " << AutoRegister::instance().getInstanceCount() << " ---" << std::endl;
