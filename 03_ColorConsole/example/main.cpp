@@ -66,45 +66,31 @@ int colorCout() {
     std::cout << std::endl;
 
     // ========== 4. 流式输出 ==========
-    std::cout << "--- 4.Stream Output ---" << std::endl;
-    red() << "This is red stream output" << std::endl;
-    green() << "This is green stream output" << std::endl;
-    blue() << "This is blue stream output" << std::endl;
-    error() << "This is error stream output" << std::endl;
-    success() << "This is success stream output" << std::endl;
-    // 链式流式输出
-    cyan() << "Multiple " << "words " << "in " << "one " << "line" << std::endl;
+    std::cout << "--- 4.1 Stream Output ---" << std::endl;
+    redStream() << "This is red stream output" << std::endl;
+    greenStream() << "This is green stream output" << std::endl;
+    blueStream() << "This is blue stream output" << std::endl;
+    errStream() << "This is error stream output" << std::endl;
+    succStream() << "This is success stream output" << std::endl;
+    cyanStream() << "Multiple " << "words " << "in " << "one " << "line" << std::endl;
     std::cout << std::endl;
+    std::cout << "--- 4.2 Stream Input ---" << std::endl;
+    int a;
+    redStream() << "Input int a:" >> a;
+    std::string b;
+    boldredStream() << "Input string b:" >> b;
 
-#if 1
-    // ========== 5. 链式格式化器 ==========
-    std::cout << "--- 5.Chained Formatter ---" << std::endl;
-    ColorFormatter fmt;
-    fmt.color(Color::GREEN)
-          .width(15)
-          .fill('.')
-          .add("Result:")
-          .addf(" {:.2f}\n", 3.14159)
-          .addf("| {:<10} | {:>10} | {:^10} |\n",
-		"Name", "Age", "Score")
-	  .addf("| {:<10} | {:>10} | {:^10.2f} |\n",
-        	"Alice", 25, 95.5)
-          .addf("| {:<10} | {:>10} | {:^10.2f} |\n",
-               "Bob", 30, 88.0);
-    fmt.println();
-#endif
-
-    // ========== 6. 输入功能 ==========
-    std::cout << "--- 6.Input Demo ---" << std::endl;
+    // ========== 5. 输入功能 ==========
+    std::cout << "--- 5.Input Demo ---" << std::endl;
     std::string name = ColorCin::getline("Enter your name: ", Color::BOLD_CYAN);
-    int age = ColorCin::getInt("Enter your age: ", Color::BOLD_YELLOW).value_or(0);
+    int age = ColorCin::get<int>("Enter your age: ", Color::BOLD_YELLOW);
     std::cout << std::endl;
 
     ColorCout::println(Color::GREEN, "Hello, {}! You are {} years old.", name, age);
     std::cout << std::endl;
 
-    // ========== 7. 综合示例 ==========
-    std::cout << "--- 7.Comprehensive Example ---" << std::endl;
+    // ========== 6. 综合示例 ==========
+    std::cout << "--- 6.Comprehensive Example ---" << std::endl;
 
     ColorCout::println(Color::BOLD_RED, R"(
     ╔══════════════════════════════════════╗
@@ -123,7 +109,7 @@ int colorCout() {
 }
 
 int main() {
+	formatter();
     colorCout();
-    formatter();
     return 0;
 }

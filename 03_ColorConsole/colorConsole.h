@@ -26,10 +26,12 @@
 #include <sstream>
 #include <iomanip>
 #include <optional>
+#include <limits>
+#include <type_traits>
 #include "format_utils.h"
 
 // 前向声明
-//class Formatter;
+class ColorCout;
 
 // ANSI 颜色代码定义
 namespace Color {
@@ -76,61 +78,74 @@ namespace Color {
 // 输入类
 class ColorCin {
 public:
-    // 带颜色提示的输入
-    static std::string getline(
+    // ========== 字符串带默认值版本 ==========
+    static std::string getline(const std::string& prompt = "", const std::string_view& color = Color::RESET, const std::string& defaultVal = "") {
+    	return getline_op(prompt, color).value_or(defaultVal);
+    }
+    
+    // ========== 通用类型带默认值版本（数值等） ==========
+    template<typename T>
+    static T get(const std::string& prompt = "", const std::string_view& color = Color::RESET, const T& defaultVal = 0) {
+        return get_op<T>(prompt, color).value_or(defaultVal);
+    }
+    
+    // ========== 字符串版本 ==========
+    static std::optional<std::string> getline_op(
         const std::string& prompt = "",
-        const std::string_view& color = Color::RESET
-    ) {
+        const std::string_view& color = Color::RESET) {
+        ColorGuard guard(color);  // RAII 颜色管理
+
         if (!prompt.empty()) {
-            std::cout << color << prompt;
+            std::cout << prompt;
         }
-        std::string input;
-        std::getline(std::cin, input);
-        std::cout << Color::RESET;
-        return input;
+
+        std::string value;
+        if (std::getline(std::cin, value)) {
+            return value;
+        }
+        
+        // 读取失败，清除错误标志并忽略无效输入
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        
+        return std::nullopt;
     }
 
-    // 带默认值的输入
-    static std::string getline(
-        const std::string& prompt,
-        const std::string_view& color,
-        const std::string& default_value
-    ) {
-        std::string input = getline(prompt, color);
-        return input.empty() ? default_value : input;
-    }
-
-    // 获取整数输入
-    static std::optional<int> getInt(
+    // ========== 通用类型版本（数值等） ==========
+    template<typename T>
+    static std::optional<T> get_op(
         const std::string& prompt = "",
-        const std::string_view& color = Color::RESET
-    ) {
-        std::string input = getline(prompt, color);
-        if (input.empty()) {
-            return std::nullopt;
+        const std::string_view& color = Color::RESET) {
+        ColorGuard guard(color);
+
+        if (!prompt.empty()) {
+            std::cout << prompt;
         }
-        try {
-            return std::stoi(input);
-        } catch (...) {
-            return std::nullopt;
+
+        T value{};
+        if (std::cin >> value) {
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            return value;
         }
+        // 读取失败，清除错误标志并忽略无效输入
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        
+        return std::nullopt;
     }
 
-    // 获取浮点数输入
-    static std::optional<double> getDouble(
-        const std::string& prompt = "",
-        const std::string_view& color = Color::RESET
-    ) {
-        std::string input = getline(prompt, color);
-        if (input.empty()) {
-            return std::nullopt;
+private:
+    // RAII 颜色守卫，确保退出时重置颜色
+    class ColorGuard {
+        std::string_view color_;
+    public:
+        explicit ColorGuard(std::string_view color) : color_(color) {
+            std::cout << color_;
         }
-        try {
-            return std::stod(input);
-        } catch (...) {
-            return std::nullopt;
+        ~ColorGuard() {
+            std::cout << Color::RESET;
         }
-    }
+    };
 };
 
 // 输出类 - 简单版本
@@ -183,6 +198,7 @@ public:
     ColorStream(ColorStream&&) = default;
     ColorStream& operator=(ColorStream&&) = default;
 
+public:    
     // 输出运算符
     template<typename T>
     ColorStream& operator<<(const T& value) {
@@ -190,6 +206,18 @@ public:
         return *this;
     }
   
+    template<typename T>
+    ColorStream& operator>>(T& value) {
+        std::cin >> value;
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        return *this;
+    }
+    
+    ColorStream& operator>>(std::string& value) {
+        std::getline(std::cin, value);
+        return *this;
+    }
     // 支持 std::endl 等特殊操纵符
     ColorStream& operator<<(std::ostream& (*manip)(std::ostream&)) {
         manip(std::cout);
@@ -198,104 +226,69 @@ public:
         }
         return *this;
     }
-
 private:
     std::string_view color_;
 };
 
 // 便捷的颜色流创建函数
-inline ColorStream red() { return ColorStream(Color::RED); }
-inline ColorStream green() { return ColorStream(Color::GREEN); }
-inline ColorStream yellow() { return ColorStream(Color::YELLOW); }
-inline ColorStream blue() { return ColorStream(Color::BLUE); }
-inline ColorStream magenta() { return ColorStream(Color::MAGENTA); }
-inline ColorStream cyan() { return ColorStream(Color::CYAN); }
-inline ColorStream white() { return ColorStream(Color::WHITE); }
-inline ColorStream bold_red() { return ColorStream(Color::BOLD_RED); }
-inline ColorStream bold_green() { return ColorStream(Color::BOLD_GREEN); }
-inline ColorStream bold_yellow() { return ColorStream(Color::BOLD_YELLOW); }
-inline ColorStream bold_blue() { return ColorStream(Color::BOLD_BLUE); }
-inline ColorStream error() { return ColorStream(Color::ERROR); }
-inline ColorStream warning() { return ColorStream(Color::WARNING); }
-inline ColorStream success() { return ColorStream(Color::SUCCESS); }
-inline ColorStream info() { return ColorStream(Color::INFO); }
-
-#if 1
-// 链式格式化器
-class ColorFormatter {
-private:
-    std::ostringstream oss;
-
-public:
-    explicit ColorFormatter(const std::string_view& c = Color::RESET){
-        oss << c;
-    }
-    
-    // 禁止拷贝
-    ColorFormatter(const ColorFormatter&) = delete;
-    ColorFormatter& operator=(const ColorFormatter&) = delete;
-
-    // 允许移动
-    ColorFormatter(ColorFormatter&&) = default;
-    ColorFormatter& operator=(ColorFormatter&&) = default;
-
-    // 设置颜色
-    ColorFormatter& color(const std::string_view& c = Color::RESET) {
-        oss << c;
-        return *this;
-    }
-
-    // 宽度
-    ColorFormatter& width(int w) {
-        oss << std::setw(w);
-        return *this;
-    }
-
-    // 填充字符
-    ColorFormatter& fill(char c) {
-        oss << std::setfill(c);
-        return *this;
-    }
-
-    // 精度
-    ColorFormatter& precision(int p) {
-        oss << std::setprecision(p);
-        return *this;
-    }
-
-    // 格式标志
-    ColorFormatter& fixed() { oss << std::fixed; return *this; }
-    ColorFormatter& scientific() { oss << std::scientific; return *this; }
-    ColorFormatter& hex() { oss << std::hex; return *this; }
-    ColorFormatter& dec() { oss << std::dec; return *this; }
-    ColorFormatter& oct() { oss << std::oct; return *this; }
-    ColorFormatter& left() { oss << std::left; return *this; }
-    ColorFormatter& right() { oss << std::right; return *this; }
-    ColorFormatter& internal() { oss << std::internal; return *this; }
-
-    // 添加值
-    template<typename T>
-    ColorFormatter& add(const T& value) {
-        oss << value;
-        return *this;
-    }
-
-    // 格式化添加
-    template<typename... Args>
-    ColorFormatter& addf(const std::string& fmt, const Args&... args) {
-        oss << Formatter::format(fmt, args...);
-        return *this;
-    }
-    
-    // 获取结果
-    std::string str() const { return oss.str(); }
-    operator std::string() const { return oss.str(); }
-
-    // 输出
-    void print() const { std::cout << oss.str() << Color::RESET; }
-    void println() const { print(); std::cout << std::endl; }
-};
-#endif
-
-
+inline ColorStream& redStream() {
+    static ColorStream instance(Color::RED);
+    return instance;
+}
+inline ColorStream& greenStream() { 
+    static ColorStream instance(Color::GREEN);
+    return instance;
+}
+inline ColorStream& yellowStream() { 
+    static ColorStream instance(Color::YELLOW);
+    return instance;
+}
+inline ColorStream& blueStream() { 
+    static ColorStream instance(Color::BLUE);
+    return instance;
+}
+inline ColorStream& magentaStream() { 
+    static ColorStream instance(Color::MAGENTA);
+    return instance;
+}
+inline ColorStream& cyanStream() { 
+    static ColorStream instance(Color::CYAN);
+    return instance;
+}
+inline ColorStream& whiteStream() { 
+    static ColorStream instance(Color::WHITE);
+    return instance;
+}
+inline ColorStream& boldredStream() { 
+    static ColorStream instance(Color::BOLD_RED);
+    return instance;
+}
+inline ColorStream& boldgreenStream() { 
+    static ColorStream instance(Color::BOLD_GREEN);
+    return instance;
+}
+inline ColorStream& boldyellowStream() { 
+    static ColorStream instance(Color::BOLD_YELLOW);
+    return instance;
+}
+inline ColorStream& boldblueStream() { 
+    static ColorStream instance(Color::BOLD_BLUE);
+    return instance;
+}
+inline ColorStream& errStream() { 
+    static ColorStream instance(Color::ERROR);
+    return instance;
+}
+inline ColorStream& warnStream() { 
+    static ColorStream instance(Color::WARNING);
+    return instance;
+}
+inline ColorStream& succStream() { 
+    static ColorStream instance(Color::SUCCESS);
+    return instance;
+}
+inline ColorStream& infoStream() { 
+    static ColorStream instance(Color::INFO);
+    return instance;
+}
 
