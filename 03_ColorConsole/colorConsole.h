@@ -27,7 +27,6 @@
 #include <iomanip>
 #include <optional>
 #include <limits>
-#include <type_traits>
 #include "format_utils.h"
 
 // 前向声明
@@ -90,9 +89,7 @@ public:
     }
     
     // ========== 字符串版本 ==========
-    static std::optional<std::string> getline_op(
-        const std::string& prompt = "",
-        const std::string_view& color = Color::RESET) {
+    static std::optional<std::string> getline_op(const std::string& prompt = "", const std::string_view& color = Color::RESET) {
         ColorGuard guard(color);  // RAII 颜色管理
 
         if (!prompt.empty()) {
@@ -113,9 +110,7 @@ public:
 
     // ========== 通用类型版本（数值等） ==========
     template<typename T>
-    static std::optional<T> get_op(
-        const std::string& prompt = "",
-        const std::string_view& color = Color::RESET) {
+    static std::optional<T> get_op(const std::string& prompt = "", const std::string_view& color = Color::RESET) {
         ColorGuard guard(color);
 
         if (!prompt.empty()) {
@@ -137,7 +132,6 @@ public:
 private:
     // RAII 颜色守卫，确保退出时重置颜色
     class ColorGuard {
-        std::string_view color_;
     public:
         explicit ColorGuard(std::string_view color) : color_(color) {
             std::cout << color_;
@@ -145,6 +139,8 @@ private:
         ~ColorGuard() {
             std::cout << Color::RESET;
         }
+    private:
+        std::string_view color_;
     };
 };
 
@@ -208,14 +204,19 @@ public:
   
     template<typename T>
     ColorStream& operator>>(T& value) {
-        std::cin >> value;
-        std::cin.clear();
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        while(!(std::cin >> value)) { 
+            std::cout << "Invalid Input, Please input again: ";     
+		    std::cin.clear();
+		    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+		}
+		std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
         return *this;
     }
     
     ColorStream& operator>>(std::string& value) {
-        std::getline(std::cin, value);
+        while(!(std::getline(std::cin, value))) {
+        	std::cout << "Invalid Input, Please input again: ";  
+        }
         return *this;
     }
     // 支持 std::endl 等特殊操纵符
