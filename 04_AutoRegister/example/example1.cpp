@@ -1,6 +1,6 @@
 /**
  * @file example.cpp
- * @brief 演示 auto_register.h 中所有宏的用法
+ * @brief 演示 auto_register.h 中所有宏的用法（适配重构后的初始化函数）
  */
 
 #include "auto_register.h"
@@ -66,25 +66,25 @@ public:
 // 1. 基础类自动注册
 AUTO_REG_CLASS(SimpleService)
 
-// 2. 带成员函数初始化的类注册
+// 2. 带成员函数初始化的类注册（使用智能指针）
 AUTO_REG_CLASS_INITFUNC(ConfiguredService, init)
 
-// 3. 带 Lambda 初始化的类注册
-AUTO_REG_CLASS_INIT(LambdaInitializedService, [](LambdaInitializedService& s) {
-    s.factor = 3.14;
-    s.mode = "active";
+// 3. 带 Lambda 初始化的类注册（参数改为 shared_ptr）
+AUTO_REG_CLASS_INIT(LambdaInitializedService, [](std::shared_ptr<LambdaInitializedService> s) {
+    s->factor = 3.14;
+    s->mode = "active";
 })
 
 // 4. 命名类实例注册
 AUTO_REG_NAMED(DatabaseConnection, PrimaryDB)
 
-// 5. 带成员函数初始化的命名实例
+// 5. 带成员函数初始化的命名实例（使用智能指针）
 AUTO_REG_NAMED_INITFUNC(DatabaseConnection, SecondaryDB, connect)
 
-// 6. 带 Lambda 初始化的命名实例
-AUTO_REG_NAMED_INIT(DatabaseConnection, ReadReplica, [](DatabaseConnection& db) {
-    db.connectionString = "jdbc:mysql://replica.host/db";
-    db.isConnected = true;
+// 6. 带 Lambda 初始化的命名实例（参数改为 shared_ptr）
+AUTO_REG_NAMED_INIT(DatabaseConnection, ReadReplica, [](std::shared_ptr<DatabaseConnection> db) {
+    db->connectionString = "jdbc:mysql://replica.host/db";
+    db->isConnected = true;
 })
 
 // 7. 类创建器注册 (Lambda)
@@ -92,16 +92,16 @@ AUTO_REG_CREATOR(ComplexObject, []() {
     return std::make_shared<ComplexObject>(100, "CreatorLambda");
 })
 
-// 8. 类创建器带成员函数初始化
+// 8. 类创建器带成员函数初始化（使用智能指针）
 AUTO_REG_CREATOR_INITFUNC(ComplexObject, []() {
     return std::make_shared<ComplexObject>(200, "CreatorInitFunc");
 }, describe)
 
-// 9. 类创建器带 Lambda 初始化
+// 9. 类创建器带 Lambda 初始化（参数改为 shared_ptr）
 AUTO_REG_CREATOR_INIT(ComplexObject, []() {
     return std::make_shared<ComplexObject>(300, "CreatorLambdaInit");
-}, [](ComplexObject& obj) {
-    obj.id += 1000;
+}, [](std::shared_ptr<ComplexObject> obj) {
+    obj->id += 1000;
 })
 
 // 10. 命名实例的类创建器
@@ -109,16 +109,16 @@ AUTO_REG_CREATOR_NAMED(ComplexObject, InstanceAlpha, []() {
     return std::make_shared<ComplexObject>(400, "InstAlpha");
 })
 
-// 11. 命名实例的类创建器带成员函数初始化
+// 11. 命名实例的类创建器带成员函数初始化（使用智能指针）
 AUTO_REG_CREATOR_NAMED_INITFUNC(ComplexObject, InstanceBeta, []() {
     return std::make_shared<ComplexObject>(500, "InstBeta");
 }, describe)
 
-// 12. 命名实例的类创建器带 Lambda 初始化
+// 12. 命名实例的类创建器带 Lambda 初始化（参数改为 shared_ptr）
 AUTO_REG_CREATOR_NAMED_INIT(ComplexObject, InstanceGamma, []() {
     return std::make_shared<ComplexObject>(600, "InstGamma");
-}, [](ComplexObject& obj) {
-    obj.type = "Modified";
+}, [](std::shared_ptr<ComplexObject> obj) {
+    obj->type = "Modified";
 })
 
 // --- 主函数 ---
@@ -146,13 +146,19 @@ int example1() {
     if (lambdaInit) lambdaInit->setup();
 
     auto primaryDb = AutoRegister::instance().getInstance<DatabaseConnection>("PrimaryDB");
-    if (primaryDb) { std::cout << "[Main] PrimaryDB 创建，连接中..." << std::endl; primaryDb->connect(); }
+    if (primaryDb) { 
+        std::cout << "[Main] PrimaryDB 创建，连接中..." << std::endl; 
+        primaryDb->connect(); 
+    }
 
     auto secondaryDb = AutoRegister::instance().getInstance<DatabaseConnection>("SecondaryDB");
-    if (secondaryDb) std::cout << "[Main] SecondaryDB 状态: " << (secondaryDb->isConnected ? "已连接" : "未连接") << std::endl;
+    if (secondaryDb) 
+        std::cout << "[Main] SecondaryDB 状态: " 
+                  << (secondaryDb->isConnected ? "已连接" : "未连接") << std::endl;
 
     auto replicaDb = AutoRegister::instance().getInstance<DatabaseConnection>("ReadReplica");
-    if (replicaDb) std::cout << "[Main] ReplicaDB 连接至: " << replicaDb->connectionString << std::endl;
+    if (replicaDb) 
+        std::cout << "[Main] ReplicaDB 连接至: " << replicaDb->connectionString << std::endl;
 
     // 命名实例访问
     auto alpha = AutoRegister::instance().getInstance<ComplexObject>("InstanceAlpha");

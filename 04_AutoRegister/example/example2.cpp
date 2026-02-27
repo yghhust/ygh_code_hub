@@ -83,36 +83,101 @@ struct BrandNewCustomCreatorMemberInitClass {
 // ==================== 使用所有宏进行注册（每类仅一次） ====================
 
 AUTO_REG_CLASS(SimpleClass);
-AUTO_REG_CLASS_PRI(InitClass, 3)
-AUTO_REG_CLASS_INIT(MemberInitClass, [](MemberInitClass& o) { o.setup(); })
-AUTO_REG_CLASS_INIT_PRI(BrandNewCustomCreatorClass, [](BrandNewCustomCreatorClass& o) { o.value = 999; }, 2)
-AUTO_REG_NAMED(NamedClass, Alpha)
-AUTO_REG_NAMED_PRI(NamedClass, Beta, 1)
-AUTO_REG_NAMED_INIT(NamedClass, Gamma, [](NamedClass& o) { o.init(); })
-AUTO_REG_NAMED_INIT_PRI(NamedClass, Delta, [](NamedClass& o) { o.init(); }, 4)
-AUTO_REG_CREATOR(CustomCreatorClass, []() { return std::make_shared<CustomCreatorClass>(100); })
-AUTO_REG_CREATOR_PRI(BrandNewCustomCreatorClass, []() { return std::make_shared<BrandNewCustomCreatorClass>(200); }, 6)
-AUTO_REG_CREATOR_INIT(YetAnotherCustomCreatorClass, []() { return std::make_shared<YetAnotherCustomCreatorClass>(300); }, [](YetAnotherCustomCreatorClass& o) { o.value += 1; })
-AUTO_REG_CREATOR_INIT_PRI(FinalCustomCreatorClass, []() { return std::make_shared<FinalCustomCreatorClass>(400); }, [](FinalCustomCreatorClass& o) { o.value += 2; }, 7)
-AUTO_REG_CREATOR_NAMED(CustomCreatorClass, Epsilon, []() { return std::make_shared<CustomCreatorClass>(500); })
-AUTO_REG_CREATOR_NAMED_PRI(CustomCreatorClass, Zeta, []() { return std::make_shared<CustomCreatorClass>(600); }, 8)
-AUTO_REG_CREATOR_NAMED_INIT(CustomCreatorClass, Eta, []() { return std::make_shared<CustomCreatorClass>(700); }, [](CustomCreatorClass& o) { o.value += 3; })
-AUTO_REG_CREATOR_NAMED_INIT_PRI(CustomCreatorClass, Theta, []() { return std::make_shared<CustomCreatorClass>(800); }, [](CustomCreatorClass& o) { o.value += 4; }, 9)
-AUTO_REG_CLASS_INITFUNC(MemberInitClass, setup)
-AUTO_REG_CLASS_INITFUNC_PRI(BrandNewCustomCreatorMemberInitClass, setup, 5)
-AUTO_REG_NAMED_INITFUNC(NamedMemberInitClass, Omega, setup)
-AUTO_REG_NAMED_INITFUNC_PRI(NamedMemberInitClass, Xi, setup, 3)
-AUTO_REG_CREATOR_INITFUNC(CustomCreatorMemberInitClass, []() { return std::make_shared<CustomCreatorMemberInitClass>(); }, setup)
-AUTO_REG_CREATOR_INITFUNC_PRI(BrandNewCustomCreatorMemberInitClass, []() { return std::make_shared<BrandNewCustomCreatorMemberInitClass>(); }, setup, 4)
-AUTO_REG_CREATOR_NAMED_INITFUNC(CustomCreatorMemberInitClass, Nu, []() { return std::make_shared<CustomCreatorMemberInitClass>(); }, setup)
-AUTO_REG_CREATOR_NAMED_INITFUNC_PRI(BrandNewCustomCreatorMemberInitClass, Mu, []() { return std::make_shared<BrandNewCustomCreatorMemberInitClass>(); }, setup, 2)
+
+AUTO_REG_CLASS_PRI(InitClass, 3);
+
+// 修改：使用 shared_ptr 作为参数
+AUTO_REG_CLASS_INIT(MemberInitClass, [](std::shared_ptr<MemberInitClass> o) { 
+    o->setup(); 
+})
+
+// 修改：使用 shared_ptr 作为参数
+AUTO_REG_CLASS_INIT_PRI(BrandNewCustomCreatorClass, 
+    [](std::shared_ptr<BrandNewCustomCreatorClass> o) { o->value = 999; }, 
+    2)
+
+AUTO_REG_NAMED(NamedClass, Alpha);
+
+AUTO_REG_NAMED_PRI(NamedClass, Beta, 1);
+
+// 修改：使用 shared_ptr 作为参数
+AUTO_REG_NAMED_INIT(NamedClass, Gamma, 
+    [](std::shared_ptr<NamedClass> o) { o->init(); })
+
+// 修改：使用 shared_ptr 作为参数
+AUTO_REG_NAMED_INIT_PRI(NamedClass, Delta, 
+    [](std::shared_ptr<NamedClass> o) { o->init(); }, 
+    4)
+
+AUTO_REG_CREATOR(CustomCreatorClass, []() { 
+    return std::make_shared<CustomCreatorClass>(100); 
+})
+
+AUTO_REG_CREATOR_PRI(BrandNewCustomCreatorClass, 
+    []() { return std::make_shared<BrandNewCustomCreatorClass>(200); }, 
+    6)
+
+// 修改：使用 shared_ptr 作为参数
+AUTO_REG_CREATOR_INIT(YetAnotherCustomCreatorClass, 
+    []() { return std::make_shared<YetAnotherCustomCreatorClass>(300); }, 
+    [](std::shared_ptr<YetAnotherCustomCreatorClass> o) { o->value += 1; })
+
+// 修改：使用 shared_ptr 作为参数
+AUTO_REG_CREATOR_INIT_PRI(FinalCustomCreatorClass, 
+    []() { return std::make_shared<FinalCustomCreatorClass>(400); }, 
+    [](std::shared_ptr<FinalCustomCreatorClass> o) { o->value += 2; }, 
+    7)
+
+AUTO_REG_CREATOR_NAMED(CustomCreatorClass, Epsilon, 
+    []() { return std::make_shared<CustomCreatorClass>(500); })
+
+AUTO_REG_CREATOR_NAMED_PRI(CustomCreatorClass, Zeta, 
+    []() { return std::make_shared<CustomCreatorClass>(600); }, 
+    8)
+
+// 修改：使用 shared_ptr 作为参数
+AUTO_REG_CREATOR_NAMED_INIT(CustomCreatorClass, Eta, 
+    []() { return std::make_shared<CustomCreatorClass>(700); }, 
+    [](std::shared_ptr<CustomCreatorClass> o) { o->value += 3; })
+
+// 修改：使用 shared_ptr 作为参数
+AUTO_REG_CREATOR_NAMED_INIT_PRI(CustomCreatorClass, Theta, 
+    []() { return std::make_shared<CustomCreatorClass>(800); }, 
+    [](std::shared_ptr<CustomCreatorClass> o) { o->value += 4; }, 
+    9)
+
+AUTO_REG_CLASS_INITFUNC(MemberInitClass, setup);
+
+AUTO_REG_CLASS_INITFUNC_PRI(BrandNewCustomCreatorMemberInitClass, setup, 5);
+
+AUTO_REG_NAMED_INITFUNC(NamedMemberInitClass, Omega, setup);
+
+AUTO_REG_NAMED_INITFUNC_PRI(NamedMemberInitClass, Xi, setup, 3);
+
+AUTO_REG_CREATOR_INITFUNC(CustomCreatorMemberInitClass, 
+    []() { return std::make_shared<CustomCreatorMemberInitClass>(); }, 
+    setup)
+
+AUTO_REG_CREATOR_INITFUNC_PRI(BrandNewCustomCreatorMemberInitClass, 
+    []() { return std::make_shared<BrandNewCustomCreatorMemberInitClass>(); }, 
+    setup, 
+    4)
+
+AUTO_REG_CREATOR_NAMED_INITFUNC(CustomCreatorMemberInitClass, Nu, 
+    []() { return std::make_shared<CustomCreatorMemberInitClass>(); }, 
+    setup)
+
+AUTO_REG_CREATOR_NAMED_INITFUNC_PRI(BrandNewCustomCreatorMemberInitClass, Mu, 
+    []() { return std::make_shared<BrandNewCustomCreatorMemberInitClass>(); }, 
+    setup, 
+    2)
 
 // ==================== 主函数测试 ====================
 int example2() {
     std::cout << "=== 开始执行初始化 ===\n";
-		AutoRegister::instance().executePriorInits(10);
+    AutoRegister::instance().executePriorInits(10);
     
-		std::cout << "\n=== 获取单例实例测试 ===\n";
+    std::cout << "\n=== 获取单例实例测试 ===\n";
     auto simple = AutoRegister::instance().getInstance<SimpleClass>();
     std::cout << "SimpleClass value: " << (simple ? std::to_string(simple->value) : "null") << "\n";
 
@@ -134,9 +199,6 @@ int example2() {
     auto brandNewCustomCreator = AutoRegister::instance().getInstance<BrandNewCustomCreatorClass>();
     std::cout << "BrandNewCustomCreatorClass value: " << (brandNewCustomCreator ? std::to_string(brandNewCustomCreator->value) : "null") << "\n";
 
-    auto anotherCustomCreatorMemberInit = AutoRegister::instance().getInstance<AnotherCustomCreatorMemberInitClass>();
-    std::cout << "AnotherCustomCreatorMemberInitClass value: " << (anotherCustomCreatorMemberInit ? std::to_string(anotherCustomCreatorMemberInit->value) : "null") << "\n";
-
     auto brandNewCustomCreatorMemberInit = AutoRegister::instance().getInstance<BrandNewCustomCreatorMemberInitClass>();
     std::cout << "BrandNewCustomCreatorMemberInitClass value: " << (brandNewCustomCreatorMemberInit ? std::to_string(brandNewCustomCreatorMemberInit->value) : "null") << "\n";
 
@@ -156,7 +218,6 @@ int example2() {
     auto customNu = AutoRegister::instance().getInstance<CustomCreatorMemberInitClass>("Nu");
     std::cout << "CustomCreatorMemberInitClass Nu value: " << (customNu ? std::to_string(customNu->value) : "null") << "\n";
     
-		std::cout << "\n=== 所有宏测试完成 ===\n";
+    std::cout << "\n=== 所有宏测试完成 ===\n";
     return 0;
 }
-

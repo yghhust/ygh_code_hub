@@ -15,6 +15,23 @@
  * - V1.4 2026.2.22 yuguohua<ghy_hust@qq.com>: 支持带参构造
  * - V1.5 2026.2.25  yuguohua<ghy_hust@qq.com>: 核心优化，使用 typeid(T).name() 自动获取类名，移除所有手动类名参数。
  */
+/**
+ * @file auto_register.h
+ * @brief 自动注册与惰性实例化框架
+ *
+ * @author yuguohua<ghy_hust@qq.com>
+ * @date 2026.2.25
+ * @copyright Copyright (c) 2026
+ *
+ * @version 1.5
+ * @par Revision History:
+ * - V1.0 2026.2.3  yuguohua<ghy_hust@qq.com>: Initial version
+ * - V1.1 2026.2.6  yuguohua<ghy_hust@qq.com>: 新增优先级初始化功能
+ * - V1.2 2026.2.7  yuguohua<ghy_hust@qq.com>: 新增多实例支持功能
+ * - V1.3 2026.2.8  yuguohua<ghy_hust@qq.com>: 优化锁设计与执行流程（解决死锁问题）
+ * - V1.4 2026.2.22 yuguohua<ghy_hust@qq.com>: 支持带参构造
+ * - V1.5 2026.2.25  yuguohua<ghy_hust@qq.com>: 核心优化，使用 typeid(T).name() 自动获取类名，移除所有手动类名参数。
+ */
 #pragma once
 
 #include <iostream>
@@ -32,11 +49,11 @@
 // ==================== 注册表项 ====================
 class RegEntry {
     using CREATOR = std::function<std::shared_ptr<void>()>;
-    using INITIALIZER = std::function<void(void*)>;
+    using INITIALIZER = std::function<void(std::shared_ptr<void>)>;  // 修改为接受 shared_ptr<void>
 private:	
     std::string key_;          // 注册键（类型名+名称）
     CREATOR creator_;          // 实例创建函数
-    INITIALIZER initializer_;  // 实例初始化函数
+    INITIALIZER initializer_;  // 实例初始化函数（修改为接受 shared_ptr<void>）
     int prior_ = 5;            // 优先级（数值小优先）
     
     bool initialized_ = false;  // 是否已初始化
@@ -70,7 +87,7 @@ public:
         if (!initializer_ || initialized_) return;
         if (!instance_ && creator_) instance_ = creator_();
         if (instance_) {
-            initializer_(instance_.get());
+            initializer_(instance_);  // 传递 shared_ptr<void>
             initialized_ = true;
         }
     }
@@ -103,8 +120,9 @@ public:
     template<typename T>    
     using CreatorFunc = std::function<std::shared_ptr<T>()>;
     
+    // 修改为接受 shared_ptr<T> 的初始化函数
     template<typename T>   
-    using InitFunc = std::function<void(T&)>;
+    using InitFunc = std::function<void(std::shared_ptr<T>)>;
     
     // 注册：无初始化、基本类型
     template<typename T>
@@ -112,7 +130,7 @@ public:
         registerEntryImpl<T>("", creator, nullptr, priority);
     }
 
-    // 注册：带初始化、基本类型
+    // 注册：带初始化、基本类型（使用新的 InitFunc）
     template<typename T>
     void registerEntryWithInit(CreatorFunc<T> creator, InitFunc<T> init, int priority = 0) {
         registerEntryImpl<T>("", creator, init, priority);
@@ -124,7 +142,7 @@ public:
         registerEntryImpl<T>(name, creator, nullptr, priority);
     }
 
-    // 注册：带初始化、命名类型
+    // 注册：带初始化、命名类型（使用新的 InitFunc）
     template<typename T>
     void registerNamedEntryWithInit(const std::string& name, CreatorFunc<T> creator, 
                                   InitFunc<T> init, int priority = 0) {
@@ -194,13 +212,20 @@ private:
         return name.empty() ? key : key + "_" + name;
     }
     
-    // 注册实现
+    // 注册实现（使用新的 InitFunc）
     template<typename T>    
     void registerEntryImpl(const std::string& name, CreatorFunc<T> creator, 
                           InitFunc<T> init, int priority = 0) {  
         std::string key = makeKey<T>(name);
-        std::function<void(void*)> initializer = nullptr;
-        if (init) initializer = [init](void* p) { init(*static_cast<T*>(p)); };
+        
+        // 包装初始化函数：接受 shared_ptr<void> 并转换为 shared_ptr<T>
+        std::function<void(std::shared_ptr<void>)> initializer = nullptr;
+        if (init) {
+            initializer = [init](std::shared_ptr<void> p) {
+                auto derived = std::static_pointer_cast<T>(p);
+                init(derived);
+            };
+        }
 
         auto entry = std::make_shared<RegEntry>();
         entry->regist(key, creator, initializer, priority);
@@ -263,7 +288,7 @@ private:
 #define AUTO_REG_CLASS_PRI(CLS, PRI) \
     _REG_HELPER(CLS##_PRI##PRI, registerEntry<CLS>([]() { return std::make_shared<CLS>(); }, PRI))
 
-// 带初始化注册（无优先级）
+// 带初始化注册（无优先级）- 注意：lambda 现在接受 shared_ptr
 #define AUTO_REG_CLASS_INIT(CLS, INIT_LAMBDA) \
     _REG_HELPER(CLS##_INIT, registerEntryWithInit<CLS>([]() { return std::make_shared<CLS>(); }, INIT_LAMBDA))
 
@@ -319,34 +344,34 @@ private:
 #define AUTO_REG_CREATOR_NAMED_INIT_PRI(CLS, NAME, CREATOR_LAMBDA, INIT_LAMBDA, PRI) \
     _REG_HELPER(CLS##_CREATOR_NAMED_##NAME##_INIT_PRI##PRI, registerNamedEntryWithInit<CLS>(#NAME, CREATOR_LAMBDA, INIT_LAMBDA, PRI))
 
-// 成员函数初始化注册（无优先级）
+// 成员函数初始化注册（无优先级）- 注意：lambda 现在接受 shared_ptr
 #define AUTO_REG_CLASS_INITFUNC(CLS, INIT_MEMBER_FUNC) \
-    _REG_HELPER(CLS##_INITFUNC, registerEntryWithInit<CLS>([]() { return std::make_shared<CLS>(); }, [](CLS& o) { o.INIT_MEMBER_FUNC(); }))
+    _REG_HELPER(CLS##_INITFUNC, registerEntryWithInit<CLS>([]() { return std::make_shared<CLS>(); }, [](std::shared_ptr<CLS> p) { p->INIT_MEMBER_FUNC(); }))
 
 // 成员函数初始化+优先级注册
 #define AUTO_REG_CLASS_INITFUNC_PRI(CLS, INIT_MEMBER_FUNC, PRI) \
-    _REG_HELPER(CLS##_INITFUNC_PRI##PRI, registerEntryWithInit<CLS>([]() { return std::make_shared<CLS>(); }, [](CLS& o) { o.INIT_MEMBER_FUNC(); }, PRI))
+    _REG_HELPER(CLS##_INITFUNC_PRI##PRI, registerEntryWithInit<CLS>([]() { return std::make_shared<CLS>(); }, [](std::shared_ptr<CLS> p) { p->INIT_MEMBER_FUNC(); }, PRI))
 
 // 命名+成员函数初始化注册
 #define AUTO_REG_NAMED_INITFUNC(CLS, NAME, INIT_MEMBER_FUNC) \
-    _REG_HELPER(CLS##_NAMED_##NAME##_INITFUNC, registerNamedEntryWithInit<CLS>(#NAME, []() { return std::make_shared<CLS>(); }, [](CLS& o) { o.INIT_MEMBER_FUNC(); }))
+    _REG_HELPER(CLS##_NAMED_##NAME##_INITFUNC, registerNamedEntryWithInit<CLS>(#NAME, []() { return std::make_shared<CLS>(); }, [](std::shared_ptr<CLS> p) { p->INIT_MEMBER_FUNC(); }))
 
 // 命名+成员函数初始化+优先级注册
 #define AUTO_REG_NAMED_INITFUNC_PRI(CLS, NAME, INIT_MEMBER_FUNC, PRI) \
-    _REG_HELPER(CLS##_NAMED_##NAME##_INITFUNC_PRI##PRI, registerNamedEntryWithInit<CLS>(#NAME, []() { return std::make_shared<CLS>(); }, [](CLS& o) { o.INIT_MEMBER_FUNC(); }, PRI))
+    _REG_HELPER(CLS##_NAMED_##NAME##_INITFUNC_PRI##PRI, registerNamedEntryWithInit<CLS>(#NAME, []() { return std::make_shared<CLS>(); }, [](std::shared_ptr<CLS> p) { p->INIT_MEMBER_FUNC(); }, PRI))
 
 // 自定义创建+成员函数初始化注册
 #define AUTO_REG_CREATOR_INITFUNC(CLS, CREATOR_LAMBDA, INIT_MEMBER_FUNC) \
-    _REG_HELPER(CLS##_CREATOR_INITFUNC, registerEntryWithInit<CLS>(CREATOR_LAMBDA, [](CLS& o) { o.INIT_MEMBER_FUNC(); }))
+    _REG_HELPER(CLS##_CREATOR_INITFUNC, registerEntryWithInit<CLS>(CREATOR_LAMBDA, [](std::shared_ptr<CLS> p) { p->INIT_MEMBER_FUNC(); }))
 
 // 自定义创建+成员函数初始化+优先级注册
 #define AUTO_REG_CREATOR_INITFUNC_PRI(CLS, CREATOR_LAMBDA, INIT_MEMBER_FUNC, PRI) \
-    _REG_HELPER(CLS##_CREATOR_INITFUNC_PRI##PRI, registerEntryWithInit<CLS>(CREATOR_LAMBDA, [](CLS& o) { o.INIT_MEMBER_FUNC(); }, PRI))
+    _REG_HELPER(CLS##_CREATOR_INITFUNC_PRI##PRI, registerEntryWithInit<CLS>(CREATOR_LAMBDA, [](std::shared_ptr<CLS> p) { p->INIT_MEMBER_FUNC(); }, PRI))
 
 // 自定义创建+命名+成员函数初始化注册
 #define AUTO_REG_CREATOR_NAMED_INITFUNC(CLS, NAME, CREATOR_LAMBDA, INIT_MEMBER_FUNC) \
-    _REG_HELPER(CLS##_CREATOR_NAMED_##NAME##_INITFUNC, registerNamedEntryWithInit<CLS>(#NAME, CREATOR_LAMBDA, [](CLS& o) { o.INIT_MEMBER_FUNC(); }))
+    _REG_HELPER(CLS##_CREATOR_NAMED_##NAME##_INITFUNC, registerNamedEntryWithInit<CLS>(#NAME, CREATOR_LAMBDA, [](std::shared_ptr<CLS> p) { p->INIT_MEMBER_FUNC(); }))
 
 // 自定义创建+命名+成员函数初始化+优先级注册
 #define AUTO_REG_CREATOR_NAMED_INITFUNC_PRI(CLS, NAME, CREATOR_LAMBDA, INIT_MEMBER_FUNC, PRI) \
-    _REG_HELPER(CLS##_CREATOR_NAMED_##NAME##_INITFUNC_PRI##PRI, registerNamedEntryWithInit<CLS>(#NAME, CREATOR_LAMBDA, [](CLS& o) { o.INIT_MEMBER_FUNC(); }, PRI))
+    _REG_HELPER(CLS##_CREATOR_NAMED_##NAME##_INITFUNC_PRI##PRI, registerNamedEntryWithInit<CLS>(#NAME, CREATOR_LAMBDA, [](std::shared_ptr<CLS> p) { p->INIT_MEMBER_FUNC(); }, PRI))
