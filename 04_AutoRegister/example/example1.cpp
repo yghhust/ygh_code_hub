@@ -64,73 +64,69 @@ public:
 
 // --- 注册宏 ---
 // 1. 基础类自动注册
-AUTO_REGISTER_CLASS(SimpleService);
+AUTO_REG_CLASS(SimpleService)
 
 // 2. 带成员函数初始化的类注册
-AUTO_REGISTER_CLASS_WITH_INITFUNC(ConfiguredService, init);
+AUTO_REG_CLASS_INITFUNC(ConfiguredService, init)
 
 // 3. 带 Lambda 初始化的类注册
-AUTO_REGISTER_CLASS_WITH_INIT(LambdaInitializedService, [](LambdaInitializedService& s) {
+AUTO_REG_CLASS_INIT(LambdaInitializedService, [](LambdaInitializedService& s) {
     s.factor = 3.14;
     s.mode = "active";
-});
+})
 
 // 4. 命名类实例注册
-AUTO_REGISTER_CLASS_INSTANCE(DatabaseConnection, PrimaryDB);
+AUTO_REG_NAMED(DatabaseConnection, PrimaryDB)
 
 // 5. 带成员函数初始化的命名实例
-AUTO_REGISTER_CLASS_INSTANCE_WITH_INITFUNC(DatabaseConnection, SecondaryDB, connect);
+AUTO_REG_NAMED_INITFUNC(DatabaseConnection, SecondaryDB, connect)
 
 // 6. 带 Lambda 初始化的命名实例
-AUTO_REGISTER_CLASS_INSTANCE_WITH_INIT(DatabaseConnection, ReadReplica, [](DatabaseConnection& db) {
+AUTO_REG_NAMED_INIT(DatabaseConnection, ReadReplica, [](DatabaseConnection& db) {
     db.connectionString = "jdbc:mysql://replica.host/db";
     db.isConnected = true;
-});
+})
 
 // 7. 类创建器注册 (Lambda)
-AUTO_REGISTER_CLASS_CREATOR(ComplexObject, []() {
+AUTO_REG_CREATOR(ComplexObject, []() {
     return std::make_shared<ComplexObject>(100, "CreatorLambda");
-});
+})
 
 // 8. 类创建器带成员函数初始化
-AUTO_REGISTER_CLASS_CREATOR_WITH_INITFUNC(ComplexObject, []() {
+AUTO_REG_CREATOR_INITFUNC(ComplexObject, []() {
     return std::make_shared<ComplexObject>(200, "CreatorInitFunc");
-}, describe);
+}, describe)
 
 // 9. 类创建器带 Lambda 初始化
-AUTO_REGISTER_CLASS_CREATOR_WITH_INIT(ComplexObject, []() {
+AUTO_REG_CREATOR_INIT(ComplexObject, []() {
     return std::make_shared<ComplexObject>(300, "CreatorLambdaInit");
 }, [](ComplexObject& obj) {
     obj.id += 1000;
-});
+})
 
 // 10. 命名实例的类创建器
-AUTO_REGISTER_CLASS_CREATOR_INSTANCE(ComplexObject, InstanceAlpha, []() {
+AUTO_REG_CREATOR_NAMED(ComplexObject, InstanceAlpha, []() {
     return std::make_shared<ComplexObject>(400, "InstAlpha");
-});
+})
 
 // 11. 命名实例的类创建器带成员函数初始化
-AUTO_REGISTER_CLASS_CREATOR_INSTANCE_WITH_INITFUNC(ComplexObject, InstanceBeta, []() {
+AUTO_REG_CREATOR_NAMED_INITFUNC(ComplexObject, InstanceBeta, []() {
     return std::make_shared<ComplexObject>(500, "InstBeta");
-}, describe);
+}, describe)
 
 // 12. 命名实例的类创建器带 Lambda 初始化
-AUTO_REGISTER_CLASS_CREATOR_INSTANCE_WITH_INIT(ComplexObject, InstanceGamma, []() {
+AUTO_REG_CREATOR_NAMED_INIT(ComplexObject, InstanceGamma, []() {
     return std::make_shared<ComplexObject>(600, "InstGamma");
 }, [](ComplexObject& obj) {
     obj.type = "Modified";
-});
+})
 
 // --- 主函数 ---
 
-int main() {
+int example1() {
     std::cout << "========================================" << std::endl;
     std::cout << "   AutoRegister Framework Demo         " << std::endl;
     std::cout << "========================================" << std::endl;
-
-    // 打印注册表信息
-    AutoRegister::instance().printRegistry();
-    std::cout << std::endl;
 
     // 执行所有初始化 (会触发带初始化的注册的 init 函数)
     std::cout << "--- Executing all initializers ---" << std::endl;
@@ -149,28 +145,24 @@ int main() {
     auto lambdaInit = AutoRegister::instance().getInstance<LambdaInitializedService>();
     if (lambdaInit) lambdaInit->setup();
 
-    auto primaryDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("PrimaryDB");
+    auto primaryDb = AutoRegister::instance().getInstance<DatabaseConnection>("PrimaryDB");
     if (primaryDb) { std::cout << "[Main] PrimaryDB 创建，连接中..." << std::endl; primaryDb->connect(); }
 
-    auto secondaryDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("SecondaryDB");
+    auto secondaryDb = AutoRegister::instance().getInstance<DatabaseConnection>("SecondaryDB");
     if (secondaryDb) std::cout << "[Main] SecondaryDB 状态: " << (secondaryDb->isConnected ? "已连接" : "未连接") << std::endl;
 
-    auto replicaDb = AutoRegister::instance().getInstanceByName<DatabaseConnection>("ReadReplica");
+    auto replicaDb = AutoRegister::instance().getInstance<DatabaseConnection>("ReadReplica");
     if (replicaDb) std::cout << "[Main] ReplicaDB 连接至: " << replicaDb->connectionString << std::endl;
 
     // 命名实例访问
-    auto alpha = AutoRegister::instance().getInstanceByName<ComplexObject>("InstanceAlpha");
+    auto alpha = AutoRegister::instance().getInstance<ComplexObject>("InstanceAlpha");
     if (alpha) alpha->describe();
 
-    auto beta = AutoRegister::instance().getInstanceByName<ComplexObject>("InstanceBeta");
+    auto beta = AutoRegister::instance().getInstance<ComplexObject>("InstanceBeta");
     if (beta) beta->describe();
 
-    auto gamma = AutoRegister::instance().getInstanceByName<ComplexObject>("InstanceGamma");
+    auto gamma = AutoRegister::instance().getInstance<ComplexObject>("InstanceGamma");
     if (gamma) gamma->describe();
-
-    std::cout << std::endl;
-    std::cout << "--- Final Instance Count: " << AutoRegister::instance().getInstanceCount() << " ---" << std::endl;
-    AutoRegister::instance().printInstances();
 
     return 0;
 }
