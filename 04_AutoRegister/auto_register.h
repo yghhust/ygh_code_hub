@@ -120,7 +120,7 @@ public:
     template<typename T>    
     using CreatorFunc = std::function<std::shared_ptr<T>()>;
     
-    // 修改为接受 shared_ptr<T> 的初始化函数
+    // 初始化函数(入参shared_ptr<T>)
     template<typename T>   
     using InitFunc = std::function<void(std::shared_ptr<T>)>;
     
@@ -130,7 +130,7 @@ public:
         registerEntryImpl<T>("", creator, nullptr, priority);
     }
 
-    // 注册：带初始化、基本类型（使用新的 InitFunc）
+    // 注册：带初始化、基本类型
     template<typename T>
     void registerEntryWithInit(CreatorFunc<T> creator, InitFunc<T> init, int priority = 0) {
         registerEntryImpl<T>("", creator, init, priority);
@@ -142,7 +142,7 @@ public:
         registerEntryImpl<T>(name, creator, nullptr, priority);
     }
 
-    // 注册：带初始化、命名类型（使用新的 InitFunc）
+    // 注册：带初始化、命名类型
     template<typename T>
     void registerNamedEntryWithInit(const std::string& name, CreatorFunc<T> creator, 
                                   InitFunc<T> init, int priority = 0) {
@@ -212,7 +212,7 @@ private:
         return name.empty() ? key : key + "_" + name;
     }
     
-    // 注册实现（使用新的 InitFunc）
+    // 注册实现
     template<typename T>    
     void registerEntryImpl(const std::string& name, CreatorFunc<T> creator, 
                           InitFunc<T> init, int priority = 0) {  
