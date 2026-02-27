@@ -46,6 +46,48 @@
 #include <vector>
 #include <algorithm>
 
+namespace AutoRegLog {
+	#ifndef AUTOREG_LOG_LEVEL
+	#define AUTOREG_LOG_LEVEL 4  // 默认级别：DEBUG
+	#endif
+
+    // 日志级别定义
+    constexpr int AUTOREG_LOG_LEVEL_DEBUG = 0;
+    constexpr int AUTOREG_LOG_LEVEL_INFO  = 1;
+    constexpr int AUTOREG_LOG_LEVEL_WARN  = 2;
+    constexpr int AUTOREG_LOG_LEVEL_ERROR = 3;
+    constexpr int AUTOREG_LOG_LEVEL_NONE  = 4;
+    
+    // 日志函数    
+    template<typename... Args>
+    void logImpl(int level, const char* prefix, Args&&... args) { 
+        // 编译时检查：如果当前级别低于配置的级别，则跳过输出
+        if (level < AUTOREG_LOG_LEVEL) {
+            return;
+        }
+        std::cout << prefix;
+        (std::cout << ... << std::forward<Args>(args)) << "\n";
+    }
+    
+    template<typename... Args>
+    void logDebug(Args&&... args) {  
+        logImpl(AUTOREG_LOG_LEVEL_DEBUG, "[AutoRegister DEBUG] ", std::forward<Args>(args)...);
+    }
+    template<typename... Args>
+    void logInfo(Args&&... args) {  
+        logImpl(AUTOREG_LOG_LEVEL_INFO, "[AutoRegister INFO] ", std::forward<Args>(args)...);
+    }
+    template<typename... Args>
+    void logWarn(Args&&... args) {  
+		logImpl(AUTOREG_LOG_LEVEL_WARN, "[AutoRegister WARN] ", std::forward<Args>(args)...);
+    }
+    template<typename... Args>
+    void logError(Args&&... args) { 
+        logImpl(AUTOREG_LOG_LEVEL_ERROR, "[AutoRegister ERROR] ", std::forward<Args>(args)...);
+    }
+}
+
+
 // ==================== 注册表项 ====================
 class RegEntry {
     using CREATOR = std::function<std::shared_ptr<void>()>;
@@ -160,7 +202,7 @@ public:
 	 * @note 按优先级升序执行：先创建所有实例，再按顺序初始化
 	 */
     void executePriorInits(int maxPri) {  
-        logInfo("executePriorInits start, maxPri=", maxPri);
+        AutoRegLog::logInfo("executePriorInits start, maxPri=", maxPri);
         
         std::lock_guard<std::mutex> lock(mutex_);
         std::vector<std::shared_ptr<RegEntry>> ent_vec;
@@ -173,7 +215,7 @@ public:
                  [](const auto& a, const auto& b) { return *a < *b; });
 
         for (auto it : ent_vec) {  // 创建实例
-            logInfo(it->info());
+            AutoRegLog::logInfo(it->info());
             it->create();
         }
         for (auto it : ent_vec) {  // 初始化实例
@@ -185,19 +227,19 @@ public:
     template<typename T>
     std::shared_ptr<T> getInstance(const std::string& name = "") {  
         std::string key = makeKey<T>(name);
-        logDebug("getInstance called, key=", key);
+        AutoRegLog::logDebug("getInstance called, key=", key);
         
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = registry_.find(key);
         if (it == registry_.end()) {
-            logError("No registration for key=", key);
+            AutoRegLog::logError("No registration for key=", key);
             return nullptr;
         }
         
         auto entry = it->second;
         auto instance = entry->create();
         if (!instance) {
-            logError("lazyCreate returned null for key=", key);
+            AutoRegLog::logError("lazyCreate returned null for key=", key);
             return nullptr;
         }
         entry->init();
@@ -232,40 +274,8 @@ private:
 
         std::lock_guard<std::mutex> lock(mutex_);
         registry_[key] = std::move(entry);
-        logDebug("Registered key=", key, " pri=", priority);
+        AutoRegLog::logDebug("Registered key=", key, " pri=", priority);
     }  
-
-public:
-    // 日志函数
-    template<typename... Args>
-    void logDebug(Args&&... args) {  
-        if (logLevel_ <= LogLevel::DEBUG)
-            logImpl("[AutoRegister DEBUG] ", std::forward<Args>(args)...);
-    }
-    template<typename... Args>
-    void logInfo(Args&&... args) {  
-        if (logLevel_ <= LogLevel::INFO)
-            logImpl("[AutoRegister INFO] ", std::forward<Args>(args)...);
-    }
-    template<typename... Args>
-    void logWarn(Args&&... args) {  
-        if (logLevel_ <= LogLevel::WARN)
-            logImpl("[AutoRegister WARN] ", std::forward<Args>(args)...);
-    }
-    template<typename... Args>
-    void logError(Args&&... args) { 
-        if (logLevel_ <= LogLevel::ERROR)
-            logImpl("[AutoRegister ERROR] ", std::forward<Args>(args)...);
-    }
-
-    template<typename... Args>
-    void logImpl(const char* prefix, Args&&... args) { 
-        std::cout << prefix;
-        (std::cout << ... << std::forward<Args>(args)) << "\n";
-    }
-
-    enum class LogLevel { DEBUG, INFO, WARN, ERROR };  
-    LogLevel logLevel_ = LogLevel::DEBUG;  
     
 private:       
     std::mutex mutex_;  
