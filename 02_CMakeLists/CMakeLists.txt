@@ -10,6 +10,7 @@
 #          2026/01/28    version 0.5  排除文件为空时bug修复
 #          2026/02/23    version 0.6  全面优化：修复bug、增强可读性、增加功能
 #          2026/02/23    version 0.7  修复RELATIVE_PATH路径错误、排除规则生效
+#          2026/03/01    version 0.8  支持编译宏定义
 #
 # Description:  
 # ------------ 
@@ -24,6 +25,8 @@
 #    CFLAGS/CXXFLAGS: 编译器选项
 #    LDFLAGS: 链接器选项
 #    LIBS: 需要链接的库
+# 4）编译宏设定
+#    MACRO_DEFINS: 编译宏
 # ================================================================================================
 
 cmake_minimum_required(VERSION 3.10)
@@ -63,7 +66,12 @@ set(HDR_EXTENSIONS
     "*.h" "*.hh" "*.hpp" "*.hxx" "*.H"
 )
 
-# ==================== 3. 编译选项配置 ====================
+# ==================== 3. 编译宏定义 ====================
+set(MACRO_DEFINS 
+    AUTOREG_LOG_LEVEL=4
+)
+
+# ==================== 4. 编译选项配置 ====================
 
 # 通用警告选项
 set(COMMON_WARNINGS
@@ -85,7 +93,7 @@ set(CXXFLAGS "-std=c++17")
 # 链接器选项
 set(LDFLAGS "")
 
-# ==================== 4. 链接库配置 ====================
+# ==================== 5. 链接库配置 ====================
 
 # 需要链接的库（库名或全路径，用分号分隔）
 set(LIBS
@@ -95,7 +103,7 @@ set(LIBS
     # "rt"          # 实时库
 )
 
-# ==================== 5. 获取源文件 ====================
+# ==================== 6. 获取源文件 ====================
 
 # 将 SRC_DIR 转换为绝对路径
 #get_filename_component(SRC_DIR_ABS "${SRC_DIR}" ABSOLUTE)
@@ -120,7 +128,7 @@ endforeach()
 # 去重
 list(REMOVE_DUPLICATES ALL_SOURCES)
 
-# ==================== 6. 获取头文件目录 ====================
+# ==================== 7. 获取头文件目录 ====================
 
 # 递归获取 SRC_DIR下面的所有目录（包括子目录）
 file(GLOB_RECURSE ALL_DIRS LIST_DIRECTORIES true RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${SRC_DIR}/*")
@@ -156,7 +164,7 @@ list(APPEND ALL_INCLUDES "${SRC_DIR}")
 # 去重
 list(REMOVE_DUPLICATES ALL_INCLUDES)
 
-# ==================== 7. 创建可执行文件 ====================
+# ==================== 8. 创建可执行文件 ====================
 
 add_executable(${MY_BIN} ${ALL_SOURCES})
 target_include_directories(${MY_BIN} PRIVATE ${ALL_INCLUDES})
@@ -174,7 +182,11 @@ target_link_options(${MY_BIN} PRIVATE ${LDFLAGS})
 # 链接库
 target_link_libraries(${MY_BIN} PRIVATE ${LIBS})
 
-# ==================== 8. 输出信息 ====================
+# 添加编译
+target_compile_definitions(${MY_BIN} PRIVATE ${MACRO_DEFINS})
+
+
+# ==================== 9. 输出信息 ====================
 
 message(STATUS "========================================")
 message(STATUS "Build Configuration:")
@@ -186,4 +198,5 @@ message(STATUS "  Include Dirs: ${ALL_INCLUDES}")
 message(STATUS "  Excluded Dirs: ${EXCLUDE_DIRS}")
 message(STATUS "  Excluded Files: ${EXCLUDE_FILES}")
 message(STATUS "  Libraries: ${LIBS}")
+message(STATUS "  Libraries: ${MACRO_DEFINS}")
 message(STATUS "========================================")
