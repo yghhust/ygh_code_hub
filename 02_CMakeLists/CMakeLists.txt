@@ -26,7 +26,7 @@
 #    LDFLAGS: 链接器选项
 #    LIBS: 需要链接的库
 # 4）编译宏设定
-#    MACRO_DEFINS: 编译宏
+#    MACRO_DEFINES: 编译宏
 # ================================================================================================
 
 cmake_minimum_required(VERSION 3.10)
@@ -67,7 +67,7 @@ set(HDR_EXTENSIONS
 )
 
 # ==================== 3. 编译宏定义 ====================
-set(MACRO_DEFINS 
+set(MACRO_DEFINES 
     AUTOREG_LOG_LEVEL=4
 )
 
@@ -183,7 +183,7 @@ target_link_options(${MY_BIN} PRIVATE ${LDFLAGS})
 target_link_libraries(${MY_BIN} PRIVATE ${LIBS})
 
 # 添加编译
-target_compile_definitions(${MY_BIN} PRIVATE ${MACRO_DEFINS})
+target_compile_definitions(${MY_BIN} PRIVATE ${MACRO_DEFINES})
 
 
 # ==================== 9. 输出信息 ====================
@@ -198,5 +198,5 @@ message(STATUS "  Include Dirs: ${ALL_INCLUDES}")
 message(STATUS "  Excluded Dirs: ${EXCLUDE_DIRS}")
 message(STATUS "  Excluded Files: ${EXCLUDE_FILES}")
 message(STATUS "  Libraries: ${LIBS}")
-message(STATUS "  Libraries: ${MACRO_DEFINS}")
+message(STATUS "  Libraries: ${MACRO_DEFINES}")
 message(STATUS "========================================")
