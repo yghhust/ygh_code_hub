@@ -15,23 +15,7 @@
  * - V1.4 2026.2.22 yuguohua<ghy_hust@qq.com>: 支持带参构造
  * - V1.5 2026.2.25  yuguohua<ghy_hust@qq.com>: 核心优化，使用 typeid(T).name() 自动获取类名，移除所有手动类名参数。
  */
-/**
- * @file auto_register.h
- * @brief 自动注册与惰性实例化框架
- *
- * @author yuguohua<ghy_hust@qq.com>
- * @date 2026.2.25
- * @copyright Copyright (c) 2026
- *
- * @version 1.5
- * @par Revision History:
- * - V1.0 2026.2.3  yuguohua<ghy_hust@qq.com>: Initial version
- * - V1.1 2026.2.6  yuguohua<ghy_hust@qq.com>: 新增优先级初始化功能
- * - V1.2 2026.2.7  yuguohua<ghy_hust@qq.com>: 新增多实例支持功能
- * - V1.3 2026.2.8  yuguohua<ghy_hust@qq.com>: 优化锁设计与执行流程（解决死锁问题）
- * - V1.4 2026.2.22 yuguohua<ghy_hust@qq.com>: 支持带参构造
- * - V1.5 2026.2.25  yuguohua<ghy_hust@qq.com>: 核心优化，使用 typeid(T).name() 自动获取类名，移除所有手动类名参数。
- */
+
 #pragma once
 
 #include <iostream>
@@ -45,6 +29,7 @@
 #include <mutex>
 #include <vector>
 #include <algorithm>
+#include <iomanip>
 
 namespace AutoRegLog {
 	#ifndef AUTOREG_LOG_LEVEL
@@ -60,7 +45,7 @@ namespace AutoRegLog {
     
     // 日志函数    
     template<typename... Args>
-    void logImpl(int level, const char* prefix, Args&&... args) { 
+    void log(int level, const char* prefix, Args&&... args) { 
         // 编译时检查：如果当前级别低于配置的级别，则跳过输出
         if (level < AUTOREG_LOG_LEVEL) {
             return;
@@ -71,22 +56,21 @@ namespace AutoRegLog {
     
     template<typename... Args>
     void logDebug(Args&&... args) {  
-        logImpl(AUTOREG_LOG_LEVEL_DEBUG, "[AutoRegister DEBUG] ", std::forward<Args>(args)...);
+        log(AUTOREG_LOG_LEVEL_DEBUG, "[AutoRegister DEBUG] ", std::forward<Args>(args)...);
     }
     template<typename... Args>
     void logInfo(Args&&... args) {  
-        logImpl(AUTOREG_LOG_LEVEL_INFO, "[AutoRegister INFO] ", std::forward<Args>(args)...);
+        log(AUTOREG_LOG_LEVEL_INFO, "[AutoRegister INFO] ", std::forward<Args>(args)...);
     }
     template<typename... Args>
     void logWarn(Args&&... args) {  
-		logImpl(AUTOREG_LOG_LEVEL_WARN, "[AutoRegister WARN] ", std::forward<Args>(args)...);
+		log(AUTOREG_LOG_LEVEL_WARN, "[AutoRegister WARN] ", std::forward<Args>(args)...);
     }
     template<typename... Args>
     void logError(Args&&... args) { 
-        logImpl(AUTOREG_LOG_LEVEL_ERROR, "[AutoRegister ERROR] ", std::forward<Args>(args)...);
+        log(AUTOREG_LOG_LEVEL_ERROR, "[AutoRegister ERROR] ", std::forward<Args>(args)...);
     }
 }
-
 
 // ==================== 注册表项 ====================
 class RegEntry {
@@ -100,7 +84,6 @@ private:
     
     bool initialized_ = false;  // 是否已初始化
     std::shared_ptr<void> instance_;  // 实例指针（void*统一存储）
-
 public:
     int priority() { return prior_; } 
     
@@ -137,9 +120,12 @@ public:
     // 获取注册项信息（日志用）
     const std::string info() {  
         std::ostringstream oss;
-        oss << "key:" << key_ << ", priority:" << prior_
-            << ", hascreator:" << (creator_ != nullptr)
-            << ", hasinitializer:" << (initializer_ != nullptr);
+        #define MAX_KEY_LEN 30
+        auto key = (key_.size() > MAX_KEY_LEN) ? (key_.substr(0, MAX_KEY_LEN - 3) + "...") : key_;
+        oss << "key=" << std::left << std::setw(MAX_KEY_LEN) << key;
+        oss << " | priority=" << prior_;
+        oss << " | hascreator=" << (creator_ != nullptr);
+        oss << " | hasinitializer=" << (initializer_ != nullptr);
         return oss.str();
     }
 };
@@ -152,9 +138,14 @@ private:
     AutoRegister& operator=(const AutoRegister&) = delete;
     AutoRegister(AutoRegister&&) = delete;
     AutoRegister& operator=(AutoRegister&&) = delete;
-
+public:
+    //static void setLogger(std::unique_ptr<ILogger> newLogger) {
+    //    logger = std::move(newLogger);
+    //}
 public:    
-    static AutoRegister& instance() {  
+    static AutoRegister& instance() { 
+        //auto static logger = std::make_unique<ConsoleLogger>(); 
+        //setLogger(std::move(logger));
         static AutoRegister inst;
         return inst;
     }
@@ -168,26 +159,26 @@ public:
     
     // 注册：无初始化、基本类型
     template<typename T>
-    void registerEntry(CreatorFunc<T> creator, int priority = 0) {
+    void registerEntry(CreatorFunc<T> creator, int priority = 5) {
         registerEntryImpl<T>("", creator, nullptr, priority);
     }
 
     // 注册：带初始化、基本类型
     template<typename T>
-    void registerEntryWithInit(CreatorFunc<T> creator, InitFunc<T> init, int priority = 0) {
+    void registerEntryWithInit(CreatorFunc<T> creator, InitFunc<T> init, int priority = 5) {
         registerEntryImpl<T>("", creator, init, priority);
     }
 
     // 注册：无初始化、命名类型
     template<typename T>
-    void registerNamedEntry(const std::string& name, CreatorFunc<T> creator, int priority = 0) {
+    void registerNamedEntry(const std::string& name, CreatorFunc<T> creator, int priority = 5) {
         registerEntryImpl<T>(name, creator, nullptr, priority);
     }
 
     // 注册：带初始化、命名类型
     template<typename T>
     void registerNamedEntryWithInit(const std::string& name, CreatorFunc<T> creator, 
-                                  InitFunc<T> init, int priority = 0) {
+                                  InitFunc<T> init, int priority = 5) {
         registerEntryImpl<T>(name, creator, init, priority);
     }
     
@@ -257,7 +248,7 @@ private:
     // 注册实现
     template<typename T>    
     void registerEntryImpl(const std::string& name, CreatorFunc<T> creator, 
-                          InitFunc<T> init, int priority = 0) {  
+                          InitFunc<T> init, int priority = 5) {  
         std::string key = makeKey<T>(name);
         
         // 包装初始化函数：接受 shared_ptr<void> 并转换为 shared_ptr<T>
@@ -276,11 +267,17 @@ private:
         registry_[key] = std::move(entry);
         AutoRegLog::logDebug("Registered key=", key, " pri=", priority);
     }  
+
+private:
+    //static std::shared_ptr<ILogger> logger;
     
 private:       
     std::mutex mutex_;  
     std::unordered_map<std::string, std::shared_ptr<RegEntry>> registry_; 
 };
+
+
+
 
 // ==================== 注册宏 ====================
 #define _REG_HELPER(NAME, ...) \
