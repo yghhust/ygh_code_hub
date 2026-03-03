@@ -3,10 +3,10 @@
  * @brief 自动注册与惰性实例化框架
  *
  * @author yuguohua<ghy_hust@qq.com>
- * @date 2026.2.25
+ * @date 2026.3.3
  * @copyright Copyright (c) 2026
  *
- * @version 1.5
+ * @version 1.6
  * @par Revision History:
  * - V1.0 2026.2.3  yuguohua<ghy_hust@qq.com>: Initial version
  * - V1.1 2026.2.6  yuguohua<ghy_hust@qq.com>: 新增优先级初始化功能
@@ -14,8 +14,8 @@
  * - V1.3 2026.2.8  yuguohua<ghy_hust@qq.com>: 优化锁设计与执行流程（解决死锁问题）
  * - V1.4 2026.2.22 yuguohua<ghy_hust@qq.com>: 支持带参构造
  * - V1.5 2026.2.25  yuguohua<ghy_hust@qq.com>: 核心优化，使用 typeid(T).name() 自动获取类名，移除所有手动类名参数。
- */
-
+ * - V1.6 2026.3.3  yuguohua<ghy_hust@qq.com>:  优化锁设计（修改为读写锁）
+*/
 #pragma once
 
 #include <iostream>
@@ -195,11 +195,13 @@ public:
     void executePriorInits(int maxPri) {  
         AutoRegLog::logInfo("executePriorInits start, maxPri=", maxPri);
         
-        std::lock_guard<std::mutex> lock(mutex_);
+        // 使用读写锁的读锁保护
+        std::shared_lock<std::shared_mutex> lock(mutex_);
         std::vector<std::shared_ptr<RegEntry>> ent_vec;
         for (auto& [key, entry] : registry_) {
             if (entry->priority() <= maxPri) ent_vec.emplace_back(entry);
         }
+        lock.unlock();  // 提前释放锁
 
         // 按优先级排序（数值小的优先级高）
         std::sort(ent_vec.begin(), ent_vec.end(),
@@ -220,7 +222,8 @@ public:
         std::string key = makeKey<T>(name);
         AutoRegLog::logDebug("getInstance called, key=", key);
         
-        std::lock_guard<std::mutex> lock(mutex_);
+        // 使用读写锁的读锁保护
+        std::shared_lock<std::shared_mutex> lock(mutex_);
         auto it = registry_.find(key);
         if (it == registry_.end()) {
             AutoRegLog::logError("No registration for key=", key);
@@ -228,6 +231,8 @@ public:
         }
         
         auto entry = it->second;
+        lock.unlock();  // 提前释放锁
+        
         auto instance = entry->create();
         if (!instance) {
             AutoRegLog::logError("lazyCreate returned null for key=", key);
@@ -263,7 +268,8 @@ private:
         auto entry = std::make_shared<RegEntry>();
         entry->regist(key, creator, initializer, priority);
 
-        std::lock_guard<std::mutex> lock(mutex_);
+        // 使用读写锁的写锁保护
+        std::lock_guard<std::shared_mutex> lock(mutex_);
         registry_[key] = std::move(entry);
         AutoRegLog::logDebug("Registered key=", key, " pri=", priority);
     }  
@@ -272,7 +278,7 @@ private:
     //static std::shared_ptr<ILogger> logger;
     
 private:       
-    std::mutex mutex_;  
+    mutable std::shared_mutex mutex_; 
     std::unordered_map<std::string, std::shared_ptr<RegEntry>> registry_; 
 };
 
