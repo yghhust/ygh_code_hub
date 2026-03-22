@@ -1,0 +1,14 @@
+[logging]
+log_level = "ERROR"
+log_file = "debug1.log"
+
+[server]
+mode = "fast"
+port = 9091
+ssl = false
+
+# 数组
+#allowed_ips = ["192.168.1.1", "10.0.0.1"]
+
+# 全局选项（无节段）
+#some_global = 42

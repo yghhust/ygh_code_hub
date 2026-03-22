@@ -6,7 +6,7 @@
  * @date        2026-02-23
  * @copyright Copyright (c) 2026
  *
- * @version     1.5
+ * @version     1.7
  * @par Revision History:
  * - V1.0 2026-01-28  yuguohua: initial
  * - V1.1 2026-01-29  yuguohua: 修复 {} 应取前面未显式占用的参数
@@ -14,6 +14,8 @@
  * - V1.3 2026-02-22  yuguohua: 修复 {:.1f} 等格式说明符占位符未被计数的问题
  * - V1.4 2026-02-23  yuguohua: 引入正则表达式重构
  * - V1.5 2026-02-23  yuguohua: 修复转义花括号 {{ 和 }} 被误识别为占位符的问题
+ * - V1.6 2026-02-24  yuguohua: 支持参数不足时用空字符串填充，支持参数多余时忽略多余参数
+ * - V1.7 2026-03-05  yuguohua: 支持非标准占位符（如 {key=value}），原样输出
  *
  * @note
  * 1. 支持空占位符 {} 及带空格的 {  }
@@ -24,6 +26,9 @@
  * 6. 兼容 GCC 的 std::regex（不使用高级断言）
  * 7. 状态管理简化，无多余函数参数
  * 8. 正确识别转义花括号，不将其误认为占位符
+ * 9. 支持占位符数量 > 参数数量（用空字符串填充）
+ * 10. 支持占位符数量 < 参数数量（忽略多余参数）
+ * 11. 支持非标准占位符（如 {key=value}），原样输出
  */
 
 #pragma once
@@ -39,6 +44,10 @@
 #include <vector>
 #include <set>
 #include <regex>
+#include <cmath>
+#include <bitset>
+#include <cstdlib>
+#include <cstdio>
 
 class Formatter {
 public:
@@ -52,16 +61,10 @@ public:
             // 第一遍：正则提取所有占位符（过滤转义的）
             std::vector<PlaceholderInfo> placeholders = parse_placeholders(fmt);
 
-            if (placeholders.size() > num_args) {
-                throw std::runtime_error("Not enough arguments for format string. Need " +
-                                         std::to_string(placeholders.size()) + " but have " +
-                                         std::to_string(num_args) + ".");
-            }
-
             // 第二遍：正则驱动格式化输出
             format_impl(oss, fmt, values, placeholders);
         } catch (const std::exception& e) {
-            std::cerr << "[Formatter Error] " << e.what() << std::endl;
+            std::cerr << "[Formatter Error] fmt = " << fmt << ",err = " << e.what() << std::endl;
             throw;
         }
         return oss.str();
@@ -145,7 +148,7 @@ private:
         size_t position;
         size_t length;
         std::string content;
-        enum class Type { EMPTY, INDEXED, FORMAT_ONLY } type;
+        enum class Type { EMPTY, INDEXED, FORMAT_ONLY, INVALID } type;
         size_t index;
         std::string spec;
     };
@@ -209,37 +212,48 @@ private:
         return result;
     }
 
-    static void parse_placeholder_content(PlaceholderInfo& info) {
-        auto is_ws = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
+	static void parse_placeholder_content(PlaceholderInfo& info) {
+		auto is_ws = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
 
-        size_t start = 0, end = info.content.size();
-        while (start < end && is_ws(info.content[start])) ++start;
-        while (end > start && is_ws(info.content[end - 1])) --end;
-        std::string trimmed = (start < end) ? info.content.substr(start, end - start) : "";
+		size_t start = 0, end = info.content.size();
+		while (start < end && is_ws(info.content[start])) ++start;
+		while (end > start && is_ws(info.content[end - 1])) --end;
+		std::string trimmed = (start < end) ? info.content.substr(start, end - start) : "";
 
-        if (trimmed.empty()) {
-            info.type = PlaceholderInfo::Type::EMPTY;
-        } else if (trimmed[0] == ':') {
-            info.type = PlaceholderInfo::Type::FORMAT_ONLY;
-            info.spec = trimmed.substr(1);
-        } else {
-            size_t num_start = (trimmed[0] == '+' || trimmed[0] == '-') ? 1 : 0;
-            if (num_start < trimmed.size() &&
-                std::isdigit(static_cast<unsigned char>(trimmed[num_start]))) {
-                size_t num_end = num_start;
-                while (num_end < trimmed.size() &&
-                       std::isdigit(static_cast<unsigned char>(trimmed[num_end])))
-                    ++num_end;
-                info.index = std::stoul(trimmed.substr(num_start, num_end - num_start));
-                info.type = PlaceholderInfo::Type::INDEXED;
-            } else {
-                throw std::runtime_error(
-                    "Named arguments are not supported. Invalid placeholder at position " +
-                    std::to_string(info.position) + ": {" + info.content + "}");
-            }
-        }
-    }
+		if (trimmed.empty()) {
+		    info.type = PlaceholderInfo::Type::EMPTY;
+		    return;
+		}
 
+		// 检查是否是格式说明符（以:开头）
+		if (trimmed[0] == ':') {
+		    info.type = PlaceholderInfo::Type::FORMAT_ONLY;
+		    info.spec = trimmed.substr(1);
+		    return;
+		}
+
+		// 检查是否是有效的无符号整数索引
+		bool is_valid_index = true;
+		for (char c : trimmed) {
+		    if (!std::isdigit(static_cast<unsigned char>(c))) {
+		        is_valid_index = false;
+		        break;
+		    }
+		}
+
+		if (is_valid_index) {
+		    try {
+		        info.index = std::stoul(trimmed);
+		        info.type = PlaceholderInfo::Type::INDEXED;
+		    } catch (...) {
+		        info.type = PlaceholderInfo::Type::INVALID;
+		    }
+		} else {
+		    // 非标准占位符 - 原样输出
+		    info.type = PlaceholderInfo::Type::INVALID;
+		}
+	}
+    
     // 正则驱动的格式化输出
     static void format_impl(std::ostringstream& oss,
                             const std::string& fmt,
@@ -286,16 +300,18 @@ private:
             } else {
                 // 普通占位符
                 if (ph_idx >= placeholders.size()) {
-                    throw std::runtime_error("Unexpected '{' at position " +
-                                             std::to_string(match_pos));
+                    // 没有对应的占位符信息，原样输出
+                    oss << token;
+                } else {
+                    const PlaceholderInfo& ph = placeholders[ph_idx];
+                    if (ph.position != match_pos) {
+                        // 位置不匹配，原样输出
+                        oss << token;
+                    } else {
+                        process_placeholder(oss, ph, values, used_indices, auto_idx);
+                        ph_idx++;
+                    }
                 }
-                const PlaceholderInfo& ph = placeholders[ph_idx];
-                if (ph.position != match_pos) {
-                    throw std::runtime_error("Mismatched placeholder at position " +
-                                             std::to_string(match_pos));
-                }
-                process_placeholder(oss, ph, values, used_indices, auto_idx);
-                ph_idx++;
             }
 
             last_pos = match_pos + match_len;
@@ -304,10 +320,6 @@ private:
         // 输出最后一段普通字符
         if (last_pos < fmt.size()) {
             oss << fmt.substr(last_pos);
-        }
-
-        if (ph_idx != placeholders.size()) {
-            throw std::runtime_error("Not all placeholders were processed.");
         }
     }
 
@@ -322,24 +334,29 @@ private:
                 while (auto_idx < values.size() && used_indices.count(auto_idx)) {
                     ++auto_idx;
                 }
-                if (auto_idx >= values.size()) {
-                    throw std::runtime_error("Missing argument for {} at position " +
-                                             std::to_string(ph.position));
+                
+                if (auto_idx < values.size()) {
+                    // 有足够参数
+                    apply_with_format(oss, values[auto_idx], "");
+                    used_indices.insert(auto_idx);
+                    ++auto_idx;
+                } else {
+                    // 参数不足，用空字符串填充
+                    oss << "";
+                    // 增加auto_idx以避免无限循环
+                    ++auto_idx;
                 }
-                apply_with_format(oss, values[auto_idx], "");
-                used_indices.insert(auto_idx);
-                ++auto_idx;
                 break;
             }
             case PlaceholderInfo::Type::INDEXED: {
-                if (ph.index >= values.size()) {
-                    oss << '{' << ph.content << '}';
-                    return;
+                if (ph.index < values.size()) {
+                    // 索引有效
+                    apply_with_format(oss, values[ph.index], "");
+                    used_indices.insert(ph.index);
+                } else {
+                    // 索引超出范围，用空字符串填充
+                    oss << "";
                 }
-                // 显式索引不检查 used_indices（允许多次使用）
-                apply_with_format(oss, values[ph.index], "");
-                // 但仍记录到 used_indices，防止自动分配重复
-                used_indices.insert(ph.index);
                 break;
             }
             case PlaceholderInfo::Type::FORMAT_ONLY: {
@@ -347,241 +364,175 @@ private:
                 while (auto_idx < values.size() && used_indices.count(auto_idx)) {
                     ++auto_idx;
                 }
-                if (auto_idx >= values.size()) {
-                    throw std::runtime_error("Missing argument for {:...} at position " +
-                                             std::to_string(ph.position));
+                
+                if (auto_idx < values.size()) {
+                    // 有足够参数
+                    apply_with_format(oss, values[auto_idx], ph.spec);
+                    used_indices.insert(auto_idx);
+                    ++auto_idx;
+                } else {
+                    // 参数不足，用空字符串填充
+                    oss << "";
+                    // 增加auto_idx以避免无限循环
+                    ++auto_idx;
                 }
-                apply_with_format(oss, values[auto_idx], ph.spec);
-                used_indices.insert(auto_idx);
-                ++auto_idx;
+                break;
+            }
+            case PlaceholderInfo::Type::INVALID: {
+                // 非标准占位符，原样输出
+                oss << '{' << ph.content << '}';
                 break;
             }
         }
     }
 
-   /*
-    *   完整的格式如下所示，spec输入为冒号（：）之后的部分：
-    *	  {[index]:[fill][align][width][.precision][type]}
-    *	    -fill: 任意字符，默认空格
-    *	    -align: < > ^，默认右对齐
-    */
-    static void apply_with_format2(std::ostringstream& oss,
-                                  const Value& value,
-                                  const std::string& spec) {
+    static void apply_with_format(std::ostringstream& oss, const Value& value, const std::string& spec) {
         if (spec.empty()) {
             oss << Value::get_string(value);
             return;
         }
 
-        char fill = ' ';     // 填充字符，默认空格
-        char align = '\0';   // 对齐方式：< > ^
-        int width = 0;       // 宽度
-        int precision = -1;  // 精度，-1 表示未指定
-        char type = '\0';    // 格式类型（d/x/f/b 等）
+        char fill = ' ';
+        char align = '\0';
+        int width = 0;
+        int precision = -1;
+        char type = '\0';
+
+        // 预编译正则（静态，只编译一次）
+        static const std::regex simple_regex(
+            "([<^>]?)([0-9]+)?(\\.[0-9]+)?([bBdfxoXeEgG]?)$"
+        );
+
+        std::smatch match;
+
+        // 1. 提取填充字符
         size_t i = 0;
-        
-        // 1. 提取填充字符（如果不是数字、对齐符、'.'，则认为是填充字符）
-		if (i < spec.size()) {
-			char first = spec[i];
-
-			// 处理 0 填充的特殊情况
-			if (first == '0' && (i + 1 >= spec.size() || 
-				std::isdigit(static_cast<unsigned char>(spec[i+1])) || 
-				spec[i+1] == '<' || spec[i+1] == '>' || spec[i+1] == '^' || spec[i+1] == '.')) {
-				fill = '0';
-				++i;
-			} 
-			// 处理其他填充字符（非数字、非对齐符、非 .）
-			else if (first != '<' && first != '>' && first != '^' && first != '.' && 
-				 !std::isdigit(static_cast<unsigned char>(first))) {
-				fill = first;
-				++i;
-			}
-		}
-
-        // 2. 提取对齐方式
-        if (i < spec.size() && (spec[i] == '<' || spec[i] == '>' || spec[i] == '^')) {
-            align = spec[i++];
+        if (i < spec.size()) {
+            char first = spec[i];
+            // 0 是特例，允许作为填充字符（如 {0>8x}）
+            if (first == '0') {
+                fill = '0';
+                ++i;
+            }
+            // 其他非数字、非 < ^ > . 的字符，作为填充字符
+            else if (first != '<' && first != '^' && first != '>' && first != '.' && 
+                     !std::isdigit(static_cast<unsigned char>(first))) {
+                fill = first;
+                ++i;
+            }
         }
 
-        // 3. 提取宽度
-        while (i < spec.size() && std::isdigit(static_cast<unsigned char>(spec[i]))) {
-            width = width * 10 + (spec[i++] - '0');
+        // 2. 正则解析剩余部分 [align][width][.precision][type]
+        std::string rest = spec.substr(i);
+        if (std::regex_match(rest, match, simple_regex)) {
+            if (match[1].matched) align = match[1].str()[0];
+            if (match[2].matched) width = std::stoi(match[2].str());
+            if (match[3].matched) precision = std::stoi(match[3].str().substr(1));
+            if (match[4].matched) type = match[4].str()[0];
         }
 
-        // 4. 兼容{:010} 写法 → 解释为 {:0>10}
-        if (!align && width > 0) {
+        // 3. 兼容旧式 0 填充：{0>8x} 或 {08x}
+        if (fill == '0' && !align && width > 0) {
             align = '>';
         }
 
-        // 5. 提取精度（可选）
-        if (i < spec.size() && spec[i] == '.') {
-            ++i;
-            precision = 0;
-            while (i < spec.size() && std::isdigit(static_cast<unsigned char>(spec[i]))) {
-                precision = precision * 10 + (spec[i++] - '0');
+        // 4. 设置对齐
+        if (align == '<') oss << std::left;
+        else if (align == '>') oss << std::right;
+        else if (align == '^') oss << std::internal;
+        else oss << std::right;  // 默认右对齐
+
+        // 5. 设置宽度
+        if (width > 0) oss << std::setw(width);
+
+        // 6. 设置填充字符
+        if (fill != ' ') oss << std::setfill(fill);
+
+        // 7. 设置精度
+        if (precision >= 0) oss << std::setprecision(precision);
+
+        // 8. 根据类型输出
+        try {
+            switch (type) {
+                case 'd': 
+                    oss << std::dec << Value::get_int<long long>(value); 
+                    break;
+                case 'x': 
+                    oss << std::hex << std::nouppercase << Value::get_int<unsigned long long>(value); 
+                    break;
+                case 'X': 
+                    oss << std::hex << std::uppercase << Value::get_int<unsigned long long>(value); 
+                    break;
+                case 'o': 
+                    oss << std::oct << Value::get_int<unsigned long long>(value); 
+                    break;
+                case 'f': 
+                case 'F': 
+                    oss << std::fixed << Value::get_float<long double>(value); 
+                    break;
+                case 'e': 
+                    oss << std::scientific << Value::get_float<long double>(value); 
+                    break;
+                case 'g': 
+                    oss << std::defaultfloat << Value::get_float<long double>(value); 
+                    break;
+                case 'b':
+                case 'B': {
+                    // 二进制格式
+                    unsigned long long val = Value::get_int<unsigned long long>(value);
+                    std::string bin = "";
+                    if (val == 0) {
+                        bin = "0";
+                    } else {
+                        while (val > 0) {
+                            bin = (val & 1 ? "1" : "0") + bin;
+                            val >>= 1;
+                        }
+                    }
+                    
+                    // 应用宽度和对齐
+                    if (width > static_cast<int>(bin.size())) {
+                        if (align == '<') {
+                            bin += std::string(width - bin.size(), fill);
+                        } else if (align == '^') {
+                            size_t pad = width - bin.size();
+                            size_t left_pad = pad / 2;
+                            size_t right_pad = pad - left_pad;
+                            bin = std::string(left_pad, fill) + bin + std::string(right_pad, fill);
+                        } else { // '>' or default
+                            bin = std::string(width - bin.size(), fill) + bin;
+                        }
+                    }
+                    oss << bin;
+                    break;
+                }
+                case 'c': {
+                    // 字符格式
+                    if (std::holds_alternative<char>(value.data)) {
+                        oss << std::get<char>(value.data);
+                    } else if (std::holds_alternative<int>(value.data)) {
+                        oss << static_cast<char>(std::get<int>(value.data));
+                    } else {
+                        oss << Value::get_string(value);
+                    }
+                    break;
+                }
+                case 's': {
+                    // 字符串格式
+                    oss << Value::get_string(value);
+                    break;
+                }
+                default:
+                    // 未知类型，按字符串处理
+                    oss << Value::get_string(value);
+                    break;
             }
+        } catch (const std::exception& e) {
+            // 类型转换失败时，按字符串处理
+            oss << Value::get_string(value);
         }
 
-        // 6. 提取类型（最后一个字符）
-        if (i < spec.size()) {
-            type = spec[i];
-        }
-
-        // 7. 设置对齐方式
-        if (align == '<') {
-            oss << std::left;
-        } else if (align == '>') {
-            oss << std::right;
-        } else if (align == '^') {
-            oss << std::internal;
-        } else {
-            // 默认右对齐
-            oss << std::right;
-        }
-
-        // 8. 设置宽度
-        if (width > 0) {
-            oss << std::setw(width);
-        }
-
-        // 9. 设置填充字符（关键：支持任意填充字符）
-        if (fill != ' ') {
-            oss << std::setfill(fill);
-        }
-
-        std::cout << "fill:" << fill << std::endl;
-        std::cout << "align:" << align << std::endl;
-        std::cout << "width:" << width << std::endl;
-        std::cout << "type:" << type << std::endl;
-        // 10. 设置精度
-        if (precision >= 0) {
-            oss << std::setprecision(precision);
-        }
-
-        // 11. 根据类型输出值
-        switch (type) {
-            case 'd':
-                oss << std::dec << Value::get_int<int>(value);
-                break;
-            case 'x':
-                oss << std::hex << std::nouppercase << Value::get_int<unsigned int>(value);
-                break;
-            case 'X':
-                oss << std::hex << std::uppercase << Value::get_int<unsigned int>(value);
-                break;
-            case 'o':
-                oss << std::oct << Value::get_int<unsigned int>(value);
-                break;
-            case 'f':
-                oss << std::fixed << Value::get_float<double>(value);
-                break;
-            case 'e':
-                oss << std::scientific << Value::get_float<double>(value);
-                break;
-            case 'g':
-                oss << std::defaultfloat << Value::get_float<double>(value);
-                break;
-            case 'b':
-            case 'B': {
-                size_t bits = (width > 0) ? width : 8;
-                oss << std::bitset<64>(Value::get_int<unsigned int>(value))
-                           .to_string()
-                           .substr(64 - bits, bits);
-                break;
-            }
-            default:
-                oss << Value::get_string(value);
-                break;
-        }
-
-        // 12. 恢复默认格式（避免影响后续输出）
+        // 9. 恢复默认格式（避免影响后续输出）
         oss << std::setfill(' ') << std::setw(0) << std::setprecision(6);
     }
-    
-    static void apply_with_format(std::ostringstream& oss, const Value& value, const std::string& spec) {
-		if (spec.empty()) {
-		    oss << Value::get_string(value);
-		    return;
-		}
-
-		char fill = ' ';
-		char align = '\0';
-		int width = 0;
-		int precision = -1;
-		char type = '\0';
-
-		// 预编译正则（静态，只编译一次）
-		static const std::regex simple_regex(
-		    "([<^>]?)([0-9]+)?(\\.[0-9]+)?([bBdfxoXeEgG]?)$"
-		);
-
-		std::smatch match;
-
-		// 1. 提取填充字符
-		size_t i = 0;
-		if (i < spec.size()) {
-		    char first = spec[i];
-		    // 0 是特例，允许作为填充字符（如 {0>8x}）
-		    if (first == '0') {
-		        fill = '0';
-		        ++i;
-		    }
-		    // 其他非数字、非 < ^ > . 的字符，作为填充字符
-		    else if (first != '<' && first != '^' && first != '>' && first != '.' && !std::isdigit(static_cast<unsigned char>(first))) {
-		        fill = first;
-		        ++i;
-		    }
-		}
-
-		// 2. 正则解析剩余部分 [align][width][.precision][type]
-		std::string rest = spec.substr(i);
-		if (std::regex_match(rest, match, simple_regex)) {
-		    if (match[1].matched) align = match[1].str()[0];
-		    if (match[2].matched) width = std::stoi(match[2].str());
-		    if (match[3].matched) precision = std::stoi(match[3].str().substr(1));
-		    if (match[4].matched) type = match[4].str()[0];
-		}
-
-		// 3. 兼容旧式 0 填充：{0>8x} 或 {08x}
-		if (fill == '0' && !align && width > 0) {
-		    align = '>';
-		}
-
-		// 4. 设置对齐
-		if (align == '<') oss << std::left;
-		else if (align == '>') oss << std::right;
-		else if (align == '^') oss << std::internal;
-
-		// 5. 设置宽度
-		if (width > 0) oss << std::setw(width);
-
-		// 6. 设置填充字符
-		if (fill != ' ') oss << std::setfill(fill);
-
-		// 7. 设置精度
-		if (precision >= 0) oss << std::setprecision(precision);
-
-		// 8. 根据类型输出
-		switch (type) {
-		    case 'd': oss << std::dec << Value::get_int<int>(value); break;
-		    case 'x': oss << std::hex << std::nouppercase << Value::get_int<unsigned int>(value); break;
-		    case 'X': oss << std::hex << std::uppercase << Value::get_int<unsigned int>(value); break;
-		    case 'o': oss << std::oct << Value::get_int<unsigned int>(value); break;
-		    case 'f': oss << std::fixed << Value::get_float<double>(value); break;
-		    case 'e': oss << std::scientific << Value::get_float<double>(value); break;
-		    case 'g': oss << std::defaultfloat << Value::get_float<double>(value); break;
-		    case 'b':
-		    case 'B': {
-		        size_t bits = (width > 0) ? width : 8;
-		        oss << std::bitset<64>(Value::get_int<unsigned int>(value))
-		                  .to_string().substr(64 - bits, bits);
-		        break;
-		    }
-		    default: oss << Value::get_string(value); break;
-		}
-
-		// 9. 恢复默认格式
-		oss << std::setfill(' ') << std::setw(0) << std::setprecision(6);
-	}
 };

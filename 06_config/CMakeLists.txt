@@ -69,6 +69,7 @@ set(HDR_EXTENSIONS
 # ==================== 3. 编译宏定义 ====================
 set(MACRO_DEFINES 
     AUTOREG_LOG_LEVEL=4
+		CGRAPH_USER_LOG
 )
 
 # ==================== 4. 编译选项配置 ====================
@@ -198,5 +199,5 @@ message(STATUS "  Include Dirs: ${ALL_INCLUDES}")
 message(STATUS "  Excluded Dirs: ${EXCLUDE_DIRS}")
 message(STATUS "  Excluded Files: ${EXCLUDE_FILES}")
 message(STATUS "  Libraries: ${LIBS}")
-message(STATUS "  Macro Definitions: ${MACRO_DEFINES}")
+message(STATUS "  Libraries: ${MACRO_DEFINES}")
 message(STATUS "========================================")

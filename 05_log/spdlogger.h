@@ -53,7 +53,7 @@ public:
         }
      
 		logger_->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [thread %t] %v");
-		//logger_->set_level(should_level_);
+		logger_->set_level(level);
 		spdlog::register_logger(logger_);
     }
     
@@ -85,12 +85,4 @@ protected:
 };
 
 using SpdLoggerPtr = std::shared_ptr<Logger<spdlog::logger>>;
-
-// 全局访问点
-#define LOG_TRACE(...) AutoRegister::instance().getInstance<SpdLogger>("RunLogger")->trace(__VA_ARGS__)
-#define LOG_DEBUG(...) AutoRegister::instance().getInstance<SpdLogger>("RunLogger")->debug(__VA_ARGS__)
-#define LOG_INFO(...)  AutoRegister::instance().getInstance<SpdLogger>("RunLogger")->info(__VA_ARGS__)
-#define LOG_WARN(...)  AutoRegister::instance().getInstance<SpdLogger>("RunLogger")->warn(__VA_ARGS__)
-#define LOG_ERROR(...) AutoRegister::instance().getInstance<SpdLogger>("RunLogger")->error(__VA_ARGS__)
-#define LOG_CRITICAL(...) AutoRegister::instance().getInstance<SpdLogger>("RunLogger")->critical(__VA_ARGS__)
 

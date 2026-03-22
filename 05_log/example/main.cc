@@ -33,10 +33,10 @@ int main() {
         
         //尝试使用未特化的类型（会抛出异常）
         Logger<int> invalid_logger;
-        invalid_logger.init("Invalid");
+        invalid_logger.init("Invalid (for test!!!)");
         
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << "Error(for test!!!): " << e.what() << std::endl;
         return 1;
     }
     
