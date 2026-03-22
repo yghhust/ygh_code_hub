@@ -28,18 +28,18 @@ Config 是一个基于 CLI11 的单例配置管理器，旨在为 C++ 项目提�
 ## 3.2 SubCmdEntry 类
 
 * 职责：封装单个配置模块的所有信息，包括：
-** app：指向 CLI11 子命令对象（用于选项遍历）。
-** obj：配置对象（std::shared_ptr<void>，类型擦除）。
-** type：配置对象的实际类型信息（std::type_index）。
-** subscribers：订阅者回调列表（类型擦除为 std::function<int(void*)>）。
-** on_change_cb：模块级回调（可选，优先于订阅者调用）。
-* dirty：脏标志，标记该模块是否有选项变化。
+    - app：指向 CLI11 子命令对象（用于选项遍历）。
+    - obj：配置对象（std::shared_ptr<void>，类型擦除）。
+    - type：配置对象的实际类型信息（std::type_index）。
+    - subscribers：订阅者回调列表（类型擦除为 std::function<int(void*)>）。
+    - on_change_cb：模块级回调（可选，优先于订阅者调用）。
+    - dirty：脏标志，标记该模块是否有选项变化。
 
 * 主要方法：
-** get<T>()：返回配置对象的副本，并检查类型一致性。
-** subscribe<T>(ONCHANGE_FUNC<T>)：添加订阅者，回调接收 const T&。
-** set_changed()：标记脏标志（由选项回调触发）。
-** notify_if_changed()：如果脏标志为真，依次调用模块回调、所有订阅者，然后清除脏标志。
+    - get<T>()：返回配置对象的副本，并检查类型一致性。
+    - subscribe<T>(ONCHANGE_FUNC<T>)：添加订阅者，回调接收 const T&。
+    - set_changed()：标记脏标志（由选项回调触发）。
+    - notify_if_changed()：如果脏标志为真，依次调用模块回调、所有订阅者，然后清除脏标志。
 
 ## 3.3 类型别名
 
@@ -50,36 +50,36 @@ Config 是一个基于 CLI11 的单例配置管理器，旨在为 C++ 项目提�
 
 ## 4.1 模块注册
 
-* 用户调用 registerConfig<T>(name, parse_func, [default_value], [on_change])。
-* Config 创建 std::shared_ptr<T> 对象（使用默认值或默认构造）。
-* 创建 SubCmdEntry 对象，存储配置对象、类型信息。
-* 如果提供了模块级回调 on_change，则调用 entry->template subscribe<T>(on_change) 将其作为订阅者加入（它优先于普通订阅者）。
-* 创建 CLI11 子命令（通过 app_.add_subcommand）。
-* 调用用户提供的 parse_func，让用户添加选项（绑定到配置对象的成员）。
-* 遍历子命令的所有选项，为每个选项设置 opt->each 回调。该回调在选项被设置时（无论是命令行还是配置文件）调用 entry->set_changed()，标记脏标志。
-* 将 SubCmdEntry 存储到 subCmdEnts_ 映射中。
+1. 用户调用 registerConfig<T>(name, parse_func, [default_value], [on_change])。
+2. Config 创建 std::shared_ptr<T> 对象（使用默认值或默认构造）。
+3. 创建 SubCmdEntry 对象，存储配置对象、类型信息。
+4. 如果提供了模块级回调 on_change，则调用 entry->template subscribe<T>(on_change) 将其作为订阅者加入（它优先于普通订阅者）。
+5. 创建 CLI11 子命令（通过 app_.add_subcommand）。
+6. 调用用户提供的 parse_func，让用户添加选项（绑定到配置对象的成员）。
+7. 遍历子命令的所有选项，为每个选项设置 opt->each 回调。该回调在选项被设置时（无论是命令行还是配置文件）调用 entry->set_changed()，标记脏标志。
+8. 将 SubCmdEntry 存储到 subCmdEnts_ 映射中。
 
 ## 4.2 命令行解析与配置加载
 
-* 用户调用 parse(argc, argv)。
-* app_.parse(argc, argv) 触发 CLI11 解析，自动处理 --config 指定的 TOML 文件。
-* 解析过程中，每个被设置的选项会触发其 opt->each 回调，将对应模块的脏标志设为 true。
-* 解析完成后，Config 遍历所有 SubCmdEntry，调用 notify_if_changed()：
-* 如果脏标志为 false，跳过。
-* 如果存在模块级回调，则调用它（传递配置对象的 void*，内部转换为 const T&）。
-* 依次调用所有订阅者回调。
-* 清除脏标志。
+1. 用户调用 parse(argc, argv)。
+2. app_.parse(argc, argv) 触发 CLI11 解析，自动处理 --config 指定的 TOML 文件。
+3. 解析过程中，每个被设置的选项会触发其 opt->each 回调，将对应模块的脏标志设为 true。
+4. 解析完成后，Config 遍历所有 SubCmdEntry，调用 notify_if_changed()：
+5. 如果脏标志为 false，跳过。
+6. 如果存在模块级回调，则调用它（传递配置对象的 void*，内部转换为 const T&）。
+7. 依次调用所有订阅者回调。
+8. 清除脏标志。
 
 ## 4.3 订阅机制
 
-* 用户通过 subscribe<T>(name, callback) 添加订阅者。
-* Config 查找对应模块的 SubCmdEntry，调用其 subscribe<T> 方法，将回调转换为类型擦除版本并加入订阅者列表。
-* 回调类型为 ONCHANGE_FUNC<T>，接收 const T&，确保只读访问。
+1. 用户通过 subscribe<T>(name, callback) 添加订阅者。
+2. Config 查找对应模块的 SubCmdEntry，调用其 subscribe<T> 方法，将回调转换为类型擦除版本并加入订阅者列表。
+3. 回调类型为 ONCHANGE_FUNC<T>，接收 const T&，确保只读访问。
 
 ## 4.4 配置值获取
 
-* 用户通过 get<T>(name) 获取配置对象副本。
-* Config 查找对应模块，调用 SubCmdEntry::get<T>()，返回 *static_cast<T*>(obj.get()) 的副本，并进行类型检查。
+1. 用户通过 get<T>(name) 获取配置对象副本。
+2. Config 查找对应模块，调用 SubCmdEntry::get<T>()，返回 *static_cast<T*>(obj.get()) 的副本，并进行类型检查。
 
 # 5. 使用示例
 ## 5.1 定义配置结构体
