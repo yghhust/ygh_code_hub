@@ -32,7 +32,6 @@ Config 是一个基于 CLI11 的单例配置管理器，旨在为 C++ 项目提�
     - obj：配置对象（std::shared_ptr<void>，类型擦除）。
     - type：配置对象的实际类型信息（std::type_index）。
     - subscribers：订阅者回调列表（类型擦除为 std::function<int(void*)>）。
-    - on_change_cb：模块级回调（可选，优先于订阅者调用）。
     - dirty：脏标志，标记该模块是否有选项变化。
 
 * 主要方法：
