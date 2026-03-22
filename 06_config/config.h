@@ -66,12 +66,7 @@ public:
     void notify_if_changed() {
         if (!dirty) return;
 
-        // 先调用模块级回调（如果存在）
-        if (on_change_cb) {
-            on_change_cb(obj.get());
-        }
-
-        // 再调用所有订阅者
+        // 调用所有订阅者
         for (auto& cb : subscribers) {
             cb(obj.get());
         }
@@ -84,7 +79,6 @@ private:
     std::shared_ptr<void> obj;               // 配置对象
     std::type_index type;                    // 配置对象类型
     std::vector<std::function<int(void*)>> subscribers;  // 订阅者回调列表
-    std::function<int(void*)> on_change_cb;  // 模块级回调（可选）
     bool dirty;                              // 脏标志
 };
 
