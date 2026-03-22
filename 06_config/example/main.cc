@@ -61,8 +61,84 @@ void test_config(int argc, char** argv) {
     }
 }
 
+int test2(int argc, char** argv) {
+    auto& cfg = Config::getInstance();
+
+    cfg.registerConfig<LoggingConfig>("logging",
+        [](CLI::App* app, LoggingConfig& c) {
+            app->add_option("--log_level", c.level);
+            app->add_option("--log_file", c.file);
+        },
+        [](const LoggingConfig& c)->int {
+            std::cout << "Logging config changed!\n";
+            return 0;
+        } 
+    );
+
+    cfg.parse(argc, argv);
+
+
+    return 0;
+}
+
+
+int test3(int argc, char** argv) {
+    auto& cfg = Config::getInstance();
+
+    // 注册 logging 模块
+    cfg.registerConfig<LoggingConfig>("logging",
+        [](CLI::App* app, LoggingConfig& c) {
+            app->add_option("--log_level", c.level, "Log level");
+            app->add_option("--log_file", c.file, "Log file");
+        },
+        LoggingConfig{},  // 默认值
+        [](const LoggingConfig& c) {   // 模块级回调（可选）
+            std::cout << "[module] Logging changed: " << c.level << " " << c.file << std::endl;
+            return 0;
+        });
+
+    // 订阅 logging 模块（多个订阅者）
+    cfg.subscribe<LoggingConfig>("logging", [](const LoggingConfig& c) {
+        std::cout << "[subscriber1] Logging changed: " << c.level << " " << c.file << std::endl;
+        return 0;
+    });
+    cfg.subscribe<LoggingConfig>("logging", [](const LoggingConfig& c) {
+        std::cout << "[subscriber2] Logging changed: " << c.level << " " << c.file << std::endl;
+        return 0;
+    });
+
+    // 注册 server 模块（无模块级回调）
+    cfg.registerConfig<ServerConfig>("server",
+        [](CLI::App* app, ServerConfig& c) {
+            app->add_option("--port", c.port)->check(CLI::Range(1024, 65535));
+            app->add_flag("--ssl", c.enable_ssl);
+            std::map<std::string, ServerConfig::Mode> mode_map = {
+                {"fast", ServerConfig::FAST},
+                {"normal", ServerConfig::NORMAL},
+                {"slow", ServerConfig::SLOW}
+            };
+            app->add_option("--mode", c.mode)
+               ->transform(CLI::CheckedTransformer(mode_map, CLI::ignore_case));
+        });
+
+    // 解析命令行（自动处理 --config 文件）
+    cfg.parse(argc, argv);
+
+    // 获取配置值
+    auto logging = cfg.get<LoggingConfig>("logging");
+    std::cout << "Final logging: level=" << logging.level << ", file=" << logging.file << std::endl;
+
+    return 0;
+}
+
 //运行指令: ./a.out --config app.toml 
 int main(int argc, char** argv) {
-	test_config(argc, argv);
+    
+	//test_config(argc, argv);
+	
+	//test2(argc, argv);
+	
+	test3(argc, argv);
+	
 	return 0;
 }
