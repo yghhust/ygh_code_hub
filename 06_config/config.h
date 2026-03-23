@@ -1,6 +1,7 @@
 /**
  * @file config.h
  * @brief 配置管理器（单例），支持模块化配置、CLI11 命令行解析与 TOML 配置文件
+ *
  * 使用方式：
  * 1. 定义配置结构体（如 LoggingConfig）。
  * 2. 注册模块，提供 lambda 向子命令添加选项。
@@ -121,14 +122,16 @@ public:
     }
 
     // 解析命令行参数（自动加载 --config 文件）
-    void parse(int argc, char** argv) {
+    int parse(int argc, char** argv) {
         // 1. 解析命令行和配置文件
-        app_.parse(argc, argv);
+        CLI11_PARSE(app_, argc, argv);
 
         // 2. 通知所有脏模块（在解析过程中已通过选项回调设置 dirty 标志）
         for (auto& [name, entry] : subCmdEnts_) {
             entry->notify_if_changed();
         }
+        
+        return 0;
     }
 
     // 获取配置对象副本
@@ -155,7 +158,7 @@ public:
 
 private:
     Config() : app_("Configuration Manager") {
-        app_.set_config("--config", "", "Load configuration file", false);
+        app_.set_config("-c,--config", "", "Load configuration file", false);
         app_.allow_config_extras(CLI::config_extras_mode::ignore);
     }
 
