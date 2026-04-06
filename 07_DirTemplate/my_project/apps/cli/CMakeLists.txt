@@ -83,6 +83,9 @@ target_link_libraries(${MY_BIN} PRIVATE ${LIBS})
 # 宏定义(私有)
 target_compile_definitions(${MY_BIN} PRIVATE ${MACRO_DEFINES})
 
+# 仅对 cli 或 gui 目标开启，便于调试
+target_compile_options(${MY_BIN} PRIVATE -fsanitize=address -g -O0)
+target_link_options(${MY_BIN} PRIVATE -fsanitize=address)
 
 # ==================== 5. 输出信息 ====================
 

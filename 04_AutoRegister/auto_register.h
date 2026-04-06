@@ -98,23 +98,34 @@ public:
         creator_ = creator;
         initializer_ = init;
         prior_ = prior;
+        
+        AutoRegLog::logDebug("Entry registered: ", info());
         return true;
     }
     
     // 创建实例（惰性初始化）
-    std::shared_ptr<void> create() {  
-        if ((!instance_) && creator_) instance_ = creator_();
+    std::shared_ptr<void> create() {
+        if (!instance_ && creator_) {
+            instance_ = creator_();
+            AutoRegLog::logDebug("Instance created: ", info());
+        }
+        
         return instance_;
     }
     
     // 初始化实例
     void init() {  
         if (!initializer_ || initialized_) return;
-        if (!instance_ && creator_) instance_ = creator_();
-        if (instance_) {
-            initializer_(instance_);  // 传递 shared_ptr<void>
-            initialized_ = true;
+        
+        if (!instance_) {
+            instance_ = create();
         }
+            
+        if (instance_) {
+	    initializer_(instance_);  // 传递 shared_ptr<void>
+	    initialized_ = true;
+	    AutoRegLog::logDebug("Instance initialized: ", info());
+	}
     }
     
     // 获取注册项信息（日志用）
@@ -138,16 +149,13 @@ private:
     AutoRegister& operator=(const AutoRegister&) = delete;
     AutoRegister(AutoRegister&&) = delete;
     AutoRegister& operator=(AutoRegister&&) = delete;
-public:
-    //static void setLogger(std::unique_ptr<ILogger> newLogger) {
-    //    logger = std::move(newLogger);
-    //}
 public:    
     static AutoRegister& instance() { 
-        //auto static logger = std::make_unique<ConsoleLogger>(); 
-        //setLogger(std::move(logger));
-        static AutoRegister inst;
-        return inst;
+        //static AutoRegister inst;
+        //return inst;
+        // 永不 delete，跟随进程生命周期，避免析构时的资源释放问题
+        static AutoRegister* inst = new AutoRegister();  
+        return *inst;
     }
 
     template<typename T>    
@@ -208,7 +216,6 @@ public:
                  [](const auto& a, const auto& b) { return *a < *b; });
 
         for (auto it : ent_vec) {  // 创建实例
-            AutoRegLog::logInfo(it->info());
             it->create();
         }
         for (auto it : ent_vec) {  // 初始化实例
@@ -216,11 +223,20 @@ public:
         }    
     }
 
+    void dump() const {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        AutoRegLog::logDebug("=== AutoRegister Dump ===");
+        AutoRegLog::logDebug("Total registered entries: ", registry_.size());
+        for (const auto& [key, entry] : registry_) {
+            AutoRegLog::logDebug("Key: ", key);
+            AutoRegLog::logDebug("  info: ", entry->info());
+        }
+    }
+
 	// 获取实例（惰性初始化）
     template<typename T>
     std::shared_ptr<T> getInstance(const std::string& name = "") {  
         std::string key = makeKey<T>(name);
-        AutoRegLog::logDebug("getInstance called, key=", key);
         
         // 使用读写锁的读锁保护
         std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -271,19 +287,12 @@ private:
         // 使用读写锁的写锁保护
         std::lock_guard<std::shared_mutex> lock(mutex_);
         registry_[key] = std::move(entry);
-        AutoRegLog::logDebug("Registered key=", key, " pri=", priority);
     }  
 
-private:
-    //static std::shared_ptr<ILogger> logger;
-    
 private:       
     mutable std::shared_mutex mutex_; 
     std::unordered_map<std::string, std::shared_ptr<RegEntry>> registry_; 
 };
-
-
-
 
 // ==================== 注册宏 ====================
 #define _REG_HELPER(NAME, ...) \

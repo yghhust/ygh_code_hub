@@ -69,7 +69,8 @@ endforeach()
 list(REMOVE_DUPLICATES ALL_SOURCES)
 
 # ==================== 4. 创建目标文件 ====================
-add_library(${MY_LIB} ${ALL_SOURCES})
+# 以OBJECT方式生成lib，防止链接器“死亡剔除”，强制链接器包含整个静态库
+add_library(${MY_LIB} OBJECT ${ALL_SOURCES})
 
 # 继承全局定义
 target_link_libraries(${MY_LIB} PRIVATE global_settings)
