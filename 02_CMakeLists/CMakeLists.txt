@@ -41,14 +41,14 @@ set(MY_BIN "a.out")
 # 源码根目录（改成你的路径，支持相对或绝对路径，相对路径是相对CMakeList.txt的路径）
 set(SRC_DIR ".")
 
-# 要排除的目录（相对 SRC_DIR 的路径，用分号分隔）
+# 要排除的目录（相对 CMakeList.txt所在路径的路径，用分号分隔）
 set(EXCLUDE_DIRS 
     "build"
     "module_a/legacy"
     "module_b/test"
 )
 
-# 要排除的文件（相对 SRC_DIR 的路径，用分号分隔）
+# 要排除的文件（用分号分隔）
 set(EXCLUDE_FILES 
     #"CMakeCXXCompilerId.cpp"
     #"CMakeCCompilerId.c"
