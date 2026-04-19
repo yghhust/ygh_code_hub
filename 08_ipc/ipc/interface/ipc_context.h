@@ -5,7 +5,10 @@
 #include <memory>
 #include <string>
 
-enum class IpcBackend { ZeroMQ };
+enum class IpcBackend {
+    ZeroMQ,
+    // 未来扩展：gRPC, UDP, etc.
+};
 
 class IIpcContext {
 public:
