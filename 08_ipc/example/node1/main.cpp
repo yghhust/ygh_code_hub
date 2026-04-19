@@ -1,54 +1,35 @@
 #include "demo.h"
-#include "ipc/zmq/zmq_context.h"
 #include <iostream>
+#include "ipc/interface/ipc_context.h"
 
 int main() {
-    // 创建服务端上下文（绑定地址）
-    auto ctx = ZmqContext::createServer("ipc:///tmp/calculator.ipc");
+    auto ctx = createIpcContext(IpcBackend::ZeroMQ);
 
-    // 创建 RPC 服务端
-    auto server = ctx.createRpcServer();
+    // 服务端（绑定）
+    std::cout << "RPC Server started on ipc:///tmp/node1.ipc" << std::endl;
+    auto service = ctx->bind("ipc:///tmp/node1.ipc", "node1");
+    service->on<AddResponse, AddRequest>("add", [](const AddRequest& req) {
+        return AddResponse{req.a + req.b};
+    });
+    service->start();
 
-    // 注册一个加法服务
-    server->on("add", [](const AddRequest& req) -> AddResponse {
-        int a = req.a;
-        int b = req.b;
-        std::cout << "Received add request: " << a << " + " << b << std::endl;
-        return {a + b};
+    std::cout << "Please start node2..." << std::endl;
+    std::cin.get();
+
+    auto client = ctx->createClient("ipc:///tmp/node2.ipc", "node2");
+    client->subscribe("alerts", [](const std::string& topic, const Json& data) {
+        std::cout << "Received Node2 Alert: " << data << std::endl;
     });
 
-    // 注册一个减法服务
-    server->on("sub", [](const SubRequest& req) -> SubResponse {
-        int a = req.a;
-        int b = req.b;
-        std::cout << "Received sub request: " << a << " - " << b << std::endl;
-        return {a - b};
-    });
+    SubRequest subReq = {100, 20};
+    SubResponse subResp = client->call<SubResponse>("sub", subReq, 1000);
     
-    #if 1 
-    // 注册一个加法服务
-    server->on("add", [](const Json& req) -> Json {
-        int a = req["a"];
-        int b = req["b"];
-        std::cout << "Received add request json: " << a << " + " << b << std::endl;
-        return {{"result", a + b}};
-    });
-
-    // 注册一个减法服务
-    server->on("sub", [](const Json& req) -> Json {
-        int a = req["a"];
-        int b = req["b"];
-        std::cout << "Received sub request json: " << a << " - " << b << std::endl;
-        return {{"result", a - b}};
-    });
-    #endif
- 
-    
-    
-    std::cout << "RPC Server started on ipc:///tmp/calculator.ipc" << std::endl;
     std::cout << "Press Enter to exit..." << std::endl;
     std::cin.get();
 
-    // ctx 析构时自动清理资源
+    std::cout << "\nShutting down..." << std::endl;
+    client.reset(); // 先销毁客户端，发送 unsubscribe
+    service->stop();
+
     return 0;
 }

@@ -1,30 +1,15 @@
 #include "zmq_context.h"
-#include "zmq_ipc_node.h"
-#include "zmq_rpc_client.h"
-#include "zmq_rpc_server.h"
-#include "zmq_event_bus.h"
+#include "zmq_service.h"
+#include "zmq_client.h"
 
-ZmqContext ZmqContext::createServer(const std::string& address) {
-    return ZmqContext(address, true);
-}
-
-ZmqContext ZmqContext::createClient(const std::string& address) {
-    return ZmqContext(address, false);
-}
-
-ZmqContext::ZmqContext(const std::string& address, bool bind)
-    : node_(std::make_shared<ZmqIpcNode>(address, bind)) {}
-
+ZmqContext::ZmqContext() : zmqCtx_(1) {}
 ZmqContext::~ZmqContext() = default;
 
-std::unique_ptr<IRpcClient> ZmqContext::createRpcClient() {
-    return std::make_unique<ZmqRpcClient>(node_);
+std::unique_ptr<IService> ZmqContext::bind(const std::string& address, const std::string& servName) {
+    localServName_ = servName;
+    return std::make_unique<ZmqService>(zmqCtx_, address, servName);
 }
 
-std::unique_ptr<IRpcServer> ZmqContext::createRpcServer() {
-    return std::make_unique<ZmqRpcServer>(node_);
-}
-
-std::unique_ptr<IEventBus> ZmqContext::createEventBus() {
-    return std::make_unique<ZmqEventBus>(node_);
+std::unique_ptr<IClient> ZmqContext::createClient(const std::string& address, const std::string& targetServName) {
+    return std::make_unique<ZmqClient>(zmqCtx_, address, localServName_, targetServName);
 }

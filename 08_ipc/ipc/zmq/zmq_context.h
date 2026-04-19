@@ -1,29 +1,18 @@
 #pragma once
-#include "interface/irpc_client.h"
-#include "interface/irpc_server.h"
-#include "interface/ievent_bus.h"
-#include <memory>
+
+#include "interface/ipc_context.h"
+#include <zmq.hpp>
 #include <string>
 
-class ZmqIpcNode;
-
-class ZmqContext {
+class ZmqContext : public IIpcContext {
 public:
-    static ZmqContext createServer(const std::string& address);
-    static ZmqContext createClient(const std::string& address);
+    ZmqContext();
+    ~ZmqContext() override;
 
-    ~ZmqContext();
-
-    ZmqContext(const ZmqContext&) = delete;
-    ZmqContext& operator=(const ZmqContext&) = delete;
-    ZmqContext(ZmqContext&&) = default;
-    ZmqContext& operator=(ZmqContext&&) = default;
-
-    std::unique_ptr<IRpcClient> createRpcClient();
-    std::unique_ptr<IRpcServer> createRpcServer();
-    std::unique_ptr<IEventBus> createEventBus();
+    std::unique_ptr<IService> bind(const std::string& address, const std::string& servName) override;
+    std::unique_ptr<IClient> createClient(const std::string& address, const std::string& targetServName) override;
 
 private:
-    ZmqContext(const std::string& address, bool bind);
-    std::shared_ptr<ZmqIpcNode> node_;
+    zmq::context_t zmqCtx_;
+    std::string localServName_;   // 由 bind 设置的本地节点名
 };
